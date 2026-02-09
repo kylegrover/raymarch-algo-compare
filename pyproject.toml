@@ -9,6 +9,7 @@ description = "Ray marching algorithm analytical testing (MVP)"
 requires-python = ">=3.9"
 dependencies = [
     "numpy>=2.0.2",
+    "pillow>=11.3.0",
 ]
 
 [project.optional-dependencies]
@@ -18,3 +19,8 @@ dev = ["pytest", "flake8"]
 minversion = "6.0"
 python_files = "tests/*.py"
 addopts = "-q"
+
+# Prevent setuptools from accidentally treating runtime output directories as
+# importable packages during editable/local builds.
+[tool.setuptools.packages.find]
+exclude = ["results*", "tests*"]

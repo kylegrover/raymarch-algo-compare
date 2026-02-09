@@ -58,6 +58,7 @@ class RayMarchStats:
     # Heatmap data (iteration count per pixel)
     iteration_heatmap: Optional[np.ndarray] = None
     hit_map: Optional[np.ndarray] = None
+    depth_map: Optional[np.ndarray] = None  # per-pixel t value (0 for miss)
 
     def compute(self, results: List[MarchResult], width: int, height: int,
                 elapsed_seconds: float):
@@ -69,11 +70,13 @@ class RayMarchStats:
         sdf_values_hits = []
         hit_map = np.zeros((height, width), dtype=bool)
         iter_map = np.zeros((height, width), dtype=np.int32)
+        depth_map = np.zeros((height, width), dtype=np.float64)
 
         for i, r in enumerate(results):
             py, px = divmod(i, width)
             iterations.append(r.iterations)
             iter_map[py, px] = r.iterations
+            depth_map[py, px] = float(r.t) if r.hit else 0.0
 
             if r.hit:
                 self.hit_count += 1
@@ -113,3 +116,4 @@ class RayMarchStats:
         self.warp_divergence_proxy = float(np.mean(block_stds)) if block_stds else 0.0
 
         self.iteration_heatmap = iter_map
+        self.depth_map = depth_map
