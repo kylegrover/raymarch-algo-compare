@@ -1,8 +1,8 @@
 """Abstract base class for SDF scenes."""
 
 from abc import ABC, abstractmethod
-from core.vec3 import Vec3
-from config import RenderConfig
+from ..core.vec3 import Vec3
+from ..config import RenderConfig
 from typing import Optional
 
 

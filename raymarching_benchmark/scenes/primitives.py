@@ -1,7 +1,7 @@
 """SDF primitive functions and combinators."""
 
 import math
-from core.vec3 import Vec3, vec3_max, vec3_min
+from ..core.vec3 import Vec3, vec3_max, vec3_min
 
 
 # ──────────────────────────────────────────────

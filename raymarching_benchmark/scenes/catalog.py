@@ -4,8 +4,8 @@ import math
 from typing import List, Optional, Dict
 from .base import SDFScene
 from .primitives import *
-from core.vec3 import Vec3
-from config import RenderConfig
+from ..core.vec3 import Vec3
+from ..config import RenderConfig
 
 
 # ──────────────────────────────────────────────
@@ -335,3 +335,77 @@ class PillarsScene(SDFScene):
 
     def sdf(self, p: Vec3) -> float:
         # Repeat in XZ
+        q = op_repeat(p, Vec3(2.0, 0.0, 2.0))
+        d_pillar = sd_cylinder(q, 0.15, 3.0)
+        d_floor = sd_plane(p, Vec3(0.0, 1.0, 0.0), -3.0)
+        return op_union(d_pillar, d_floor)
+
+    def suggested_camera(self) -> Optional[RenderConfig]:
+        return RenderConfig(
+            camera_position=(1.0, 1.0, 8.0),
+            camera_target=(0.0, 0.0, 0.0),
+        )
+
+
+# ──────────────────────────────────────────────
+# Scene 14: Stacked thin planes
+# ──────────────────────────────────────────────
+
+class ThinPlanesScene(SDFScene):
+    @property
+    def name(self): return "Thin Planes Stack"
+
+    @property
+    def description(self):
+        return "Multiple thin parallel planes. Tests tunneling through thin geometry."
+
+    @property
+    def category(self): return "thin_features"
+
+    def sdf(self, p: Vec3) -> float:
+        # Repeated thin shell
+        d = sd_plane(p, Vec3(0.0, 1.0, 0.0), 0.0)
+        d = abs(d)  # Infinite plane shell at y=0
+        # Now repeat in Y
+        spacing = 0.5
+        py_mod = ((p.y + spacing * 0.5) % spacing) - spacing * 0.5
+        q = Vec3(p.x, py_mod, p.z)
+        d_shell = abs(sd_plane(q, Vec3(0.0, 1.0, 0.0), 0.0)) - 0.01
+        return d_shell
+
+
+# ──────────────────────────────────────────────
+# Scene registry
+# ──────────────────────────────────────────────
+
+def get_all_scenes() -> List[SDFScene]:
+    """Return all registered test scenes."""
+    return [
+        SphereScene(),
+        GrazingPlaneScene(),
+        CubeScene(),
+        ThinTorusScene(),
+        CylinderScene(),
+        NearMissScene(),
+        HollowCubeScene(),
+        SmoothBlendScene(),
+        OnionShellScene(),
+        MengerSpongeScene(iterations=3),
+        MandelbulbScene(),
+        BadLipschitzSphereScene(),
+        PillarsScene(),
+        ThinPlanesScene(),
+    ]
+
+
+def get_scene_by_name(name: str) -> Optional[SDFScene]:
+    """Find scene by name (case-insensitive partial match)."""
+    for scene in get_all_scenes():
+        if name.lower() in scene.name.lower():
+            return scene
+    return None
+
+
+def get_scenes_by_category(category: str) -> List[SDFScene]:
+    """Get all scenes in a category."""
+    return [s for s in get_all_scenes() if s.category == category]

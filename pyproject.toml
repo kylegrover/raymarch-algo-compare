@@ -1,0 +1,20 @@
+[build-system]
+requires = ["setuptools>=42", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "raymarching-benchmark"
+version = "0.0.0"
+description = "Ray marching algorithm analytical testing (MVP)"
+requires-python = ">=3.9"
+dependencies = [
+    "numpy>=2.0.2",
+]
+
+[project.optional-dependencies]
+dev = ["pytest", "flake8"]
+
+[tool.pytest.ini_options]
+minversion = "6.0"
+python_files = "tests/*.py"
+addopts = "-q"
