@@ -416,6 +416,8 @@ The following minimal artifacts were added to make the project runnable/testable
 - `raymarching_benchmark/__main__.py` — `python -m` entry
 - `pyproject.toml` & `requirements.txt` — minimal packaging and dev deps
 - `tests/test_main.py` — tiny integration test that runs `run_once()`
+- `README.md` — quickstart and developer notes
+- `.github/workflows/ci.yaml` — CI smoke/test workflow
 
 Goal: produce a fast, testable pre-prototype (MVP) that exercises the core loop: camera -> strategy -> metrics.
 
