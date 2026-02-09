@@ -143,3 +143,9 @@ To empirically validate the "Con" list of each algorithm, implement these specif
     Warp Divergence: Measure the variance of iteration counts within a 32-thread GPU warp. High divergence ruins parallelism performance even if the "average" step count is low.
 
     Heatmap Visualization: Implement a "Cost Heatmap" (Red = High Iterations, Blue = Low) to visually debug where algorithms get stuck (e.g., usually the silhouette edges of objects)."
+
+
+
+reference:
+- Segment Tracing demo https://www.shadertoy.com/view/WdVyDW
+- overstep bisect example https://www.shadertoy.com/view/t3tfD4
