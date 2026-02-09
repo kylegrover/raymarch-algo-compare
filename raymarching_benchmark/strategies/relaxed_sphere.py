@@ -14,7 +14,7 @@ class RelaxedSphereTracing(MarchStrategy):
     If overshoot detected (step > |sdf| at new position), fallback to safe step.
     """
 
-    def __init__(self, omega: float = 1.6):
+    def __init__(self, omega: float = 1.2):
         self._omega = omega
 
     @property
@@ -42,16 +42,19 @@ class RelaxedSphereTracing(MarchStrategy):
                     position_x=pos.x, position_y=pos.y, position_z=pos.z
                 )
 
-            # Check if the previous relaxed step overshot
-            # If |prev_step| + |current_d| < |prev_step * omega|, overshoot occurred
-            step = d * omega
+            # Check for overshoot (inside the surface)
+            if d < 0:
+                # Back up by the amount we're inside, and switch to conservative
+                t += d
+                omega = 1.0  # Go safe for one step
+                prev_d = abs(d)
+                continue
 
-            # Safety check: if we took an over-relaxed step and the new SDF
-            # is small enough that we might have overshot, fall back
+            # Fallback for "grazing" overshoot (still outside but took too large a step)
+            step = d * omega
             if i > 0 and (prev_d + d) < prev_d * omega:
-                # Overshoot detected: fall back to conservative step
-                step = d  # Use unrelaxed step
-                # Could also reduce omega here
+                step = d
+                omega = 1.0
 
             t += step
             prev_d = d

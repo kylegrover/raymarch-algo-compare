@@ -54,10 +54,10 @@ def print_comparison_tables(analyzer: MetricsAnalyzer, output_dir: Optional[str]
     # Summary per-strategy
     emit('\n── Strategy Summary (aggregated) ──')
     summary = analyzer.strategy_summary()
-    emit(f"{'Strategy':<24}{'avg_iters':>12}{'hit_rate':>12}{'wins':>8}{'time(us/ray)':>16}")
-    emit('-' * 72)
+    emit(f"{'Strategy':<20}{'avg_iters':>12}{'hit_rate':>12}{'wins':>8}{'warp_div':>12}{'time_us':>12}")
+    emit('-' * 76)
     for strat, vals in summary.items():
-        emit(f"{strat:<24}{vals['avg_mean_iterations']:12.2f}{vals['avg_hit_rate']:12.2%}{vals['num_wins']:8d}{vals['avg_time_per_ray_us']:16.2f}")
+        emit(f"{strat:<20}{vals['avg_mean_iterations']:12.2f}{vals['avg_hit_rate']:12.2%}{vals['num_wins']:8d}{vals['avg_warp_divergence']:12.2f}{vals['avg_time_per_ray_us']:12.2f}")
 
     # Per-scene best/worst
     emit('\n── Per-scene best/worst (by mean iterations) ──')

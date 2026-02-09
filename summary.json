@@ -1,0 +1,50 @@
+[
+  {
+    "strategy": "Standard",
+    "scene": "Sphere",
+    "total_rays": 768,
+    "hit_count": 52,
+    "hit_rate": 0.06770833333333333,
+    "iteration_mean": 9.921875,
+    "iteration_p95": 15.0,
+    "iteration_max": 45,
+    "time_per_ray_us": 11.563932275748812,
+    "warp_divergence": 2.322934173951066
+  },
+  {
+    "strategy": "Overstep-Bisect",
+    "scene": "Sphere",
+    "total_rays": 768,
+    "hit_count": 52,
+    "hit_rate": 0.06770833333333333,
+    "iteration_mean": 10.072916666666666,
+    "iteration_p95": 14.0,
+    "iteration_max": 45,
+    "time_per_ray_us": 12.255729113045769,
+    "warp_divergence": 2.2070129988009053
+  },
+  {
+    "strategy": "Standard",
+    "scene": "Grazing Plane",
+    "total_rays": 768,
+    "hit_count": 448,
+    "hit_rate": 0.5833333333333334,
+    "iteration_mean": 38.2578125,
+    "iteration_p95": 118.0,
+    "iteration_max": 219,
+    "time_per_ray_us": 37.242708155342065,
+    "warp_divergence": 12.852989895560563
+  },
+  {
+    "strategy": "Overstep-Bisect",
+    "scene": "Grazing Plane",
+    "total_rays": 768,
+    "hit_count": 448,
+    "hit_rate": 0.5833333333333334,
+    "iteration_mean": 30.440104166666668,
+    "iteration_p95": 114.0,
+    "iteration_max": 136,
+    "time_per_ray_us": 33.29908819675135,
+    "warp_divergence": 8.474694597488556
+  }
+]

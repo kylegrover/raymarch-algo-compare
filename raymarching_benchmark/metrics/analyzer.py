@@ -1,5 +1,6 @@
 """Statistical analysis and cross-comparison of benchmark results."""
 
+import os
 import numpy as np
 from typing import List, Dict, Tuple, Optional
 from raymarching_benchmark.core.types import RayMarchStats
@@ -131,3 +132,17 @@ class MetricsAnalyzer:
                     matrix[si, sti] = getattr(stat, metric, np.nan)
 
         return scenes, strategies, matrix
+
+    def save_csv_matrices(self, output_dir: str):
+        """Save iteration_mean and time_per_ray matrices as CSV files."""
+        os.makedirs(output_dir, exist_ok=True)
+        
+        metrics = ['iteration_mean', 'time_per_ray_us', 'hit_rate', 'warp_divergence_proxy']
+        
+        import pandas as pd
+        
+        for metric in metrics:
+            scenes, strategies, matrix = self.per_scene_matrix(metric)
+            df = pd.DataFrame(matrix, index=scenes, columns=strategies)
+            csv_path = os.path.join(output_dir, f'matrix_{metric}.csv')
+            df.to_csv(csv_path)

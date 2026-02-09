@@ -8,7 +8,9 @@ version = "0.0.0"
 description = "Ray marching algorithm analytical testing (MVP)"
 requires-python = ">=3.9"
 dependencies = [
+    "matplotlib>=3.9.4",
     "numpy>=2.0.2",
+    "pandas>=2.3.3",
     "pillow>=11.3.0",
 ]
 
@@ -24,3 +26,8 @@ addopts = "-q"
 # importable packages during editable/local builds.
 [tool.setuptools.packages.find]
 exclude = ["results*", "tests*"]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.4.2",
+]

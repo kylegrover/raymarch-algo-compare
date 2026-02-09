@@ -2,7 +2,7 @@
 
 import os
 import numpy as np
-from typing import Optional
+from typing import Optional, List
 
 # Pillow is optional — fall back to saving raw numpy arrays if unavailable
 try:
@@ -69,3 +69,51 @@ def save_inverse_depth_map(depth_map: np.ndarray, hit_map: np.ndarray, path: str
     img = (255.0 * norm).astype(np.uint8)
     npy_path = path + '.npy'
     _save_or_warn(img, path, npy_path)
+
+
+def save_tiled_comparison(maps: List[np.ndarray], labels: List[str], path: str,
+                           max_val: Optional[int] = None) -> None:
+    """Save a grid of heatmaps side-by-side for visual comparison.
+    Requires Pillow.
+    """
+    if not _HAVE_PIL or not maps:
+        return
+
+    n = len(maps)
+    cols = min(n, 3)
+    rows = (n + cols - 1) // cols
+    
+    h, w = maps[0].shape
+    
+    # Calculate grid size with some padding for labels
+    label_h = 30
+    combined_w = w * cols
+    combined_h = (h + label_h) * rows
+    
+    res = Image.new('RGB', (combined_w, combined_h), (255, 255, 255))
+    
+    # We use a simple normalization for all maps
+    mx = float(max_val or max(m.max() for m in maps))
+    
+    from PIL import ImageDraw, ImageFont
+    draw = ImageDraw.Draw(res)
+    
+    for i, (m, label) in enumerate(zip(maps, labels)):
+        r, c = divmod(i, cols)
+        
+        # Normalize and colorize (simple grayscale to red)
+        norm = np.clip(m.astype(np.float32) / mx, 0.0, 1.0)
+        # Create a basic heatmap: Black -> Red -> Yellow
+        # For now, let's just do grayscale for simplicity or a simple red ramp
+        pixels = (norm * 255).astype(np.uint8)
+        img = Image.fromarray(pixels).convert('RGB')
+        
+        # Paste into grid
+        x = c * w
+        y = r * (h + label_h)
+        res.paste(img, (x, y + label_h))
+        
+        # Draw label
+        draw.text((x + 5, y + 5), label, fill=(0, 0, 0))
+
+    res.save(path)

@@ -116,4 +116,5 @@ class RayMarchStats:
         self.warp_divergence_proxy = float(np.mean(block_stds)) if block_stds else 0.0
 
         self.iteration_heatmap = iter_map
+        self.hit_map = hit_map
         self.depth_map = depth_map

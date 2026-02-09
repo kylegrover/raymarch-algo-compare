@@ -24,7 +24,7 @@ class SegmentTracing(MarchStrategy):
     """
 
     def __init__(self, lipschitz: float = 1.0):
-        self._lipschitz = lipschitz
+        self.lipschitz = lipschitz
 
     @property
     def name(self) -> str:
@@ -37,7 +37,7 @@ class SegmentTracing(MarchStrategy):
     def march(self, ray: Ray, sdf_func: Callable, config: MarchConfig) -> MarchResult:
         t = 0.0
         iterations = 0
-        L = self._lipschitz
+        L = self.lipschitz
 
         for i in range(config.max_iterations):
             iterations = i + 1

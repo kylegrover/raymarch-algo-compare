@@ -399,10 +399,20 @@ def get_all_scenes() -> List[SDFScene]:
 
 
 def get_scene_by_name(name: str) -> Optional[SDFScene]:
-    """Find scene by name (case-insensitive partial match)."""
-    for scene in get_all_scenes():
-        if name.lower() in scene.name.lower():
+    """Find scene by name (case-insensitive exact match or start match)."""
+    name_low = name.lower().replace(' ', '')
+    scenes = get_all_scenes()
+    
+    # 1. Try exact (no spaces)
+    for scene in scenes:
+        if scene.name.lower().replace(' ', '') == name_low:
             return scene
+            
+    # 2. Try starts-with
+    for scene in scenes:
+        if scene.name.lower().replace(' ', '').startswith(name_low):
+            return scene
+            
     return None
 
 
