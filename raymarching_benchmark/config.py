@@ -22,6 +22,7 @@ class MarchConfig:
     hit_threshold: float = 1e-4
     max_distance: float = 100.0
     min_step_fraction: float = 0.01  # For overstep methods
+    kappa: float = 2.0                 # Segment-tracing growth factor
     initial_relaxation: float = 1.6  # For relaxed sphere tracing
     bisection_steps: int = 10  # For bisection phase
     stuck_threshold: int = 5  # Consecutive small steps before switching

@@ -139,10 +139,16 @@ def cli(argv: Optional[list[str]] = None) -> int:
                    help="Directory to write images and logs (default: results)")
     p.add_argument("--no-save-images", action='store_true', help="Disable image/log output")
     p.add_argument("--json", type=str, default=None, help="Write stats JSON summary to path")
+    p.add_argument("--kappa", type=float, default=None, help="Override segment-tracing kappa (growth factor)")
+    p.add_argument("--min-step-fraction", type=float, default=None, help="Override march.min_step_fraction")
     args = p.parse_args(argv)
 
     rc = RenderConfig(width=args.width, height=args.height)
     mc = MarchConfig()
+    if args.kappa is not None:
+        mc.kappa = float(args.kappa)
+    if args.min_step_fraction is not None:
+        mc.min_step_fraction = float(args.min_step_fraction)
 
     results_dir = args.output_dir or 'results'
 

@@ -112,13 +112,23 @@ class GPURunner:
         vbo = self.ctx.buffer(vertices)
         vao = self.ctx.simple_vertex_array(self.prog, vbo, 'in_vert')
         
+        # GPU render + timing (synchronous): ensure GPU work completes before readback
+        start = __import__('time').perf_counter()
         vao.render(moderngl.TRIANGLE_STRIP)
-        
+        # force completion to get an accurate GPU-side elapsed time
+        try:
+            self.ctx.finish()
+        except Exception:
+            # fallback if finish() unavailable in the context
+            pass
+        end = __import__('time').perf_counter()
+
         # Read back
         data = self.fbo.read(components=4, dtype='f4')
         pixels = np.frombuffer(data, dtype='f4').reshape(height, width, 4)
-        
-        return pixels
+
+        render_time_s = end - start
+        return pixels, render_time_s
 
 def run_gpu_benchmark(scene_name: str, strategy_name: str, render_cfg: RenderConfig, march_cfg: MarchConfig):
     from ..strategies import list_strategies
@@ -143,6 +153,5 @@ def run_gpu_benchmark(scene_name: str, strategy_name: str, render_cfg: RenderCon
     strat_id = strategy_map.get(strategy_name, 0)
     
     runner = GPURunner()
-    pixels = runner.render(scene_id, strat_id, render_cfg, march_cfg, lipschitz=scene.known_lipschitz_bound())
-    
-    return pixels
+    pixels, render_time_s = runner.render(scene_id, strat_id, render_cfg, march_cfg, lipschitz=scene.known_lipschitz_bound())
+    return {"pixels": pixels, "render_time_s": render_time_s}
