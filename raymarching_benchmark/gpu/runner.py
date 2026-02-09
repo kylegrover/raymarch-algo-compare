@@ -96,6 +96,11 @@ class GPURunner:
         set_uniform('maxDistance', march_cfg.max_distance)
         set_uniform('omega', 1.2)
         set_uniform('lipschitz', lipschitz)
+        # Segment-tracing tuning (sensible defaults)
+        set_uniform('kappa', 2.0)
+        # minStep: honor configured min_step_fraction but stay >= hitThreshold
+        min_step = max(march_cfg.hit_threshold, march_cfg.min_step_fraction * march_cfg.max_distance)
+        set_uniform('minStep', float(min_step))
 
         # Full screen quad
         vertices = np.array([

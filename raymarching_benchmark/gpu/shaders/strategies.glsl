@@ -4,7 +4,13 @@ uniform int maxIterations;
 uniform float hitThreshold;
 uniform float maxDistance;
 uniform float omega; // for Relaxed
-uniform float lipschitz; // for Segment/Enhanced
+uniform float lipschitz; // global Lipschitz (optional)
+// Segment-tracing tuning
+uniform float kappa;      // growth factor for next candidate segment
+uniform float minStep;    // minimum allowed march step (safety)
+
+// Small epsilon to avoid division-by-zero in estimators
+const float SEG_EPS = 1e-6;
 
 struct MarchResult {
     bool hit;
@@ -156,21 +162,110 @@ MarchResult ar_st(vec3 ro, vec3 rd) {
     return MarchResult(false, t, it, d);
 }
 
-// 6. Segment Tracing (Simplified)
+// 6. Segment Tracing (numeric K-segment estimator)
+// Implements the local-segment Lipschitz estimator approach (numeric fallback
+// to the analytic KSegment used in the paper). Safer for arbitrary `map()`.
+
+float estimate_K_segment(vec3 a, vec3 b, float globalLipschitz) {
+    // Numerical slope estimates on [a,b] using endpoints + midpoint.
+    float fa = map(a);
+    float fb = map(b);
+    float dist_ab = max(length(b - a), SEG_EPS);
+    float L_ab = abs(fa - fb) / dist_ab;
+
+    // Midpoint sample improves robustness for curved fields
+    vec3 m = 0.5 * (a + b);
+    float fm = map(m);
+    float L_am = abs(fa - fm) / max(length(m - a), SEG_EPS);
+    float L_mb = abs(fm - fb) / max(length(b - m), SEG_EPS);
+
+    float L = max(L_ab, max(L_am, L_mb));
+
+    // Apply small safety factor and enforce a sensible lower bound
+    L = max(L * 1.1, max(globalLipschitz, 1e-4));
+    return L;
+}
+
 MarchResult segment(vec3 ro, vec3 rd) {
+    // Primary: mirror CPU `SegmentTracing.march()` behavior so GPU matches CPU.
+    // Fallback: if no reliable global Lipschitz is provided, use a numeric K-segment.
+
     float t = 0.0;
-    int it = 0;
-    float d;
-    float L = max(lipschitz, 0.01);
-    
-    for(int i=0; i<maxIterations; i++) {
+    int it = 0;            // iteration / SDF-eval counter (we increment for extra map() calls)
+    float d = 0.0;
+
+    // candidate controls how far we probe ahead; start conservatively
+    float candidate = max(1.0, minStep);
+    float globalL = max(lipschitz, 0.0);
+
+    for (int i = 0; i < maxIterations; ++i) {
         it = i + 1;
-        d = map(ro + rd*t);
-        if(abs(d) < hitThreshold) return MarchResult(true, t, it, d);
-        
-        float step_size = d / L;
-        t += step_size;
-        if(t > maxDistance) break;
+        vec3 p = ro + rd * t;
+        d = map(p);
+
+        if (abs(d) < hitThreshold) {
+            return MarchResult(true, t, it, d);
+        }
+
+        // If a (user/scene) global Lipschitz is available, follow the CPU logic
+        if (globalL > 1e-5) {
+            // candidate based on global Lipschitz (same as Python implementation)
+            candidate = max(minStep, abs(d) / max(globalL, SEG_EPS));
+
+            // evaluate at the end of the candidate segment (extra SDF eval)
+            vec3 pos_end = ro + rd * (t + candidate);
+            float d_end = map(pos_end);
+            it += 1; // account for the extra evaluation
+
+            // Hit at the endpoint
+            if (abs(d_end) < hitThreshold) {
+                t += candidate;
+                return MarchResult(true, t, it, d_end);
+            }
+
+            // Surface inside segment -> bisect and return if found
+            if (d_end < 0.0) {
+                float a = t;
+                float b = t + candidate;
+                for (int j = 0; j < 8; ++j) {
+                    float mid = 0.5 * (a + b);
+                    float dm = map(ro + rd * mid);
+                    it += 1;
+                    if (abs(dm) < hitThreshold) {
+                        return MarchResult(true, mid, it, dm);
+                    }
+                    if (dm > 0.0) a = mid; else b = mid;
+                }
+                // conservative placement if bisect didn't converge exactly
+                t = 0.5 * (a + b);
+                float df = map(ro + rd * t);
+                it += 1;
+                return MarchResult(true, t, it, df);
+            }
+
+            // Both endpoints safe → can extend the step using endpoint slack (matches CPU)
+            float extended = candidate + d_end / max(globalL, SEG_EPS);
+            float step = max(minStep, extended);
+            t += step;
+
+            // next candidate grows from this step (paper: kappa > 1)
+            candidate = kappa * step;
+
+            if (t > maxDistance) break;
+            continue;
+        }
+
+        // --- Fallback: numeric K-segment estimator (when no global Lipschitz known) ---
+        vec3 seg_end = ro + rd * (t + candidate);
+        float Kseg = estimate_K_segment(p, seg_end, 1e-4);
+        float step = abs(d) / max(Kseg, SEG_EPS);
+        step = min(step, candidate);
+        step = max(step, minStep);
+        t += step;
+        candidate = kappa * step;
+
+        if (t > maxDistance) break;
     }
+
     return MarchResult(false, t, it, d);
 }
