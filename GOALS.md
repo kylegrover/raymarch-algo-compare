@@ -148,4 +148,8 @@ To empirically validate the "Con" list of each algorithm, implement these specif
 
 reference:
 - Segment Tracing demo https://www.shadertoy.com/view/WdVyDW
+    - https://www.reddit.com/r/GraphicsProgramming/comments/1jhcd6m/understanding_segment_tracing_the_faster/
 - overstep bisect example https://www.shadertoy.com/view/t3tfD4
+
+- Lipschitz-agnostic, efficient and accurate rendering of implicit surfaces 
+    - https://link.springer.com/article/10.1007/s00371-023-03216-y
