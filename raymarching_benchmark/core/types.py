@@ -48,9 +48,13 @@ class RayMarchStats:
     # Convergence
     hit_rate: float = 0.0
 
-    # Timing
+    # Timing (CPU)
     total_time_seconds: float = 0.0
     time_per_ray_us: float = 0.0
+
+    # GPU-measured timing and divergence (populated when GPU runner is available)
+    gpu_time_per_ray_us: Optional[float] = None
+    gpu_warp_divergence_proxy: Optional[float] = None
 
     # Warp divergence proxy (std of iterations in local neighborhoods)
     warp_divergence_proxy: float = 0.0

@@ -65,31 +65,21 @@ def generate_markdown_report(analyzer: MetricsAnalyzer, output_dir: str):
     lines.append("")
     summary = analyzer.strategy_summary()
 
-    header = "| Strategy | Iterations (avg) | Hit Rate | Wins | Warp Div | CPU Time (us/ray)"
-    if gpu_df is not None:
-        header += " | GPU Time (us/ray) | GPU WD"
-    header += " |"
-    sep = "| :--- | :---: | :---: | :---: | :---: | :---:"
-    if gpu_df is not None:
-        sep += " | :---: | :---:"
-    sep += " |"
+    # Always include GPU columns now (values will be '-' if missing)
+    header = "| Strategy | Iterations (avg) | Hit Rate | Wins | Warp Div | CPU Time (us/ray) | GPU Time (us/ray) | GPU WD |"
+    sep = "| :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: |"
 
     lines.append(header)
     lines.append(sep)
 
     for strat, vals in summary.items():
+        gpu_time = vals.get('avg_gpu_time_per_ray_us')
+        gpu_wd = vals.get('avg_gpu_warp_divergence')
+        gpu_time_str = f"{gpu_time:.2f}" if gpu_time is not None else "-"
+        gpu_wd_str = f"{gpu_wd:.2f}" if gpu_wd is not None else "-"
+
         row = (f"| {strat} | {vals['avg_mean_iterations']:.2f} | {vals['avg_hit_rate']:.1%} | "
-               f"{vals['num_wins']} | {vals['avg_warp_divergence']:.2f} | {vals['avg_time_per_ray_us']:.2f}")
-        if gpu_df is not None:
-            # try to find a GPU aggregate for this strategy
-            g = gpu_df[gpu_df['Strategy'] == strat]
-            if not g.empty:
-                gpu_mean = float(g['Time_us_per_ray'].mean()) if 'Time_us_per_ray' in g.columns else float('nan')
-                gpu_wd = float(g['Warp_divergence'].mean()) if 'Warp_divergence' in g.columns else float('nan')
-                row += f" | {gpu_mean:.2f} | {gpu_wd:.2f}"
-            else:
-                row += " | - | -"
-        row += " |"
+               f"{vals['num_wins']} | {vals['avg_warp_divergence']:.2f} | {vals['avg_time_per_ray_us']:.2f} | {gpu_time_str} | {gpu_wd_str} |")
         lines.append(row)
     lines.append("")
 
@@ -120,22 +110,31 @@ def generate_markdown_report(analyzer: MetricsAnalyzer, output_dir: str):
         for strat in analyzer.get_strategies():
             stat = analyzer.get_stat(strat, scene)
             if not stat:
-                continue
-            base = (f"| {strat} | {stat.iteration_mean:.2f} | {stat.hit_rate:.1%} | "
-                    f"{stat.iteration_p95:.1f} | {stat.warp_divergence_proxy:.2f} | {stat.time_per_ray_us:.2f}")
-            if gpu_df is not None:
-                g = gpu_df[(gpu_df['Scene'] == scene) & (gpu_df['Strategy'] == strat)]
-                if not g.empty:
-                    gpu_mean = float(g['Time_us_per_ray'].mean()) if 'Time_us_per_ray' in g.columns else float('nan')
-                    gpu_wd = float(g['Warp_divergence'].mean()) if 'Warp_divergence' in g.columns else float('nan')
-                    base += f" | {gpu_mean:.2f} | {gpu_wd:.2f}"
+                # stat missing: emit an empty row so the table shape is stable
+                if gpu_df is not None:
+                    lines.append(f"| {strat} | {'-':>8} | {'-':>6} | {'-':>4} | {'-':>8} | {'-':>12} | {'-':>12} | {'-':>6} |")
                 else:
-                    base += " | - | -"
-            base += " |"
+                    lines.append(f"| {strat} | {'-':>8} | {'-':>6} | {'-':>4} | {'-':>8} | {'-':>12} |")
+                continue
+
+            gpu_time = getattr(stat, 'gpu_time_per_ray_us', None)
+            gpu_wd = getattr(stat, 'gpu_warp_divergence_proxy', None)
+            gpu_time_str = f"{gpu_time:.2f}" if gpu_time is not None else "-"
+            gpu_wd_str = f"{gpu_wd:.2f}" if gpu_wd is not None else "-"
+
+            if gpu_df is not None:
+                base = (f"| {strat} | {stat.iteration_mean:.2f} | {stat.hit_rate:.1%} | "
+                        f"{stat.iteration_p95:.1f} | {stat.warp_divergence_proxy:.2f} | {stat.time_per_ray_us:.2f} | {gpu_time_str} | {gpu_wd_str} |")
+            else:
+                base = (f"| {strat} | {stat.iteration_mean:.2f} | {stat.hit_rate:.1%} | "
+                        f"{stat.iteration_p95:.1f} | {stat.warp_divergence_proxy:.2f} | {stat.time_per_ray_us:.2f} |")
+
             lines.append(base)
+
         lines.append("")
 
-    with open(report_path, 'w', encoding='utf-8') as f:
-        f.write('\n'.join(lines))
+    # write out the report
+    with open(report_path, 'w', encoding='utf-8') as fh:
+        fh.write('\n'.join(lines) + '\n')
 
     return report_path

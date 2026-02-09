@@ -101,6 +101,11 @@ class MetricsAnalyzer:
             avg_warp_div = np.mean([s.warp_divergence_proxy for s in stats_for_strat])
             avg_p99 = np.mean([s.iteration_p99 for s in stats_for_strat])
             avg_time = np.mean([s.time_per_ray_us for s in stats_for_strat])
+            # GPU fields: ignore None values
+            gpu_times = [s.gpu_time_per_ray_us for s in stats_for_strat if getattr(s, 'gpu_time_per_ray_us', None) is not None]
+            gpu_wds = [s.gpu_warp_divergence_proxy for s in stats_for_strat if getattr(s, 'gpu_warp_divergence_proxy', None) is not None]
+            avg_gpu_time = float(np.mean(gpu_times)) if gpu_times else None
+            avg_gpu_wd = float(np.mean(gpu_wds)) if gpu_wds else None
 
             summary[strat] = {
                 'avg_mean_iterations': float(avg_iters),
@@ -111,6 +116,8 @@ class MetricsAnalyzer:
                 'avg_warp_divergence': float(avg_warp_div),
                 'avg_p99_iterations': float(avg_p99),
                 'avg_time_per_ray_us': float(avg_time),
+                'avg_gpu_time_per_ray_us': avg_gpu_time,
+                'avg_gpu_warp_divergence': avg_gpu_wd,
             }
 
         return summary
@@ -137,7 +144,7 @@ class MetricsAnalyzer:
         """Save iteration_mean and time_per_ray matrices as CSV files."""
         os.makedirs(output_dir, exist_ok=True)
         
-        metrics = ['iteration_mean', 'time_per_ray_us', 'hit_rate', 'warp_divergence_proxy']
+        metrics = ['iteration_mean', 'time_per_ray_us', 'hit_rate', 'warp_divergence_proxy', 'gpu_time_per_ray_us', 'gpu_warp_divergence_proxy']
         
         import pandas as pd
         

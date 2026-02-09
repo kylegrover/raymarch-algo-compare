@@ -120,6 +120,9 @@ def _save_outputs(stats: RayMarchStats, results_dir: str, max_iters: Optional[in
         'iteration_p95': float(stats.iteration_p95),
         'iteration_max': int(stats.iteration_max),
         'warp_divergence': float(stats.warp_divergence_proxy),
+        'time_us_per_ray': float(stats.time_per_ray_us),
+        'gpu_time_us_per_ray': float(stats.gpu_time_per_ray_us) if stats.gpu_time_per_ray_us is not None else None,
+        'gpu_warp_divergence': float(stats.gpu_warp_divergence_proxy) if stats.gpu_warp_divergence_proxy is not None else None,
     }
     with open(json_path, 'w', encoding='utf-8') as f:
         json.dump(compact, f, indent=2)
@@ -174,6 +177,38 @@ def cli(argv: Optional[list[str]] = None) -> int:
             print(f"\n>> Scene: {scene_name} | Strategy: {strat_name}")
             stats = run_once(render=rc, march=mc, scene_name=scene_name, strategy_name=strat_name)
             _print_stats(stats)
+
+            # Always attempt a GPU validation run for the same scene/strategy so reports
+            # consistently contain CPU+GPU columns. Fail gracefully if GPU is not available.
+            try:
+                from .gpu.runner import run_gpu_benchmark
+                gpu_res = run_gpu_benchmark(scene_name, strat_name, rc, mc)
+                if gpu_res is not None:
+                    # pixels[...,1] encodes iterations/maxIterations
+                    pixels = gpu_res['pixels']
+                    render_time_s = float(gpu_res['render_time_s'])
+                    gpu_iters = pixels[..., 1] * mc.max_iterations
+                    stats.gpu_time_per_ray_us = (render_time_s / (rc.width * rc.height)) * 1e6
+
+                    # compute warp-divergence proxy on GPU iteration map (same proxy as CPU)
+                    h, w = gpu_iters.shape
+                    bx, by = 8, 4
+                    stds = []
+                    for yy in range(0, h, by):
+                        for xx in range(0, w, bx):
+                            block = gpu_iters[yy: min(yy+by, h), xx: min(xx+bx, w)].ravel()
+                            if block.size == 0:
+                                continue
+                            stds.append(float(block.std()))
+                    stats.gpu_warp_divergence_proxy = float(sum(stds) / len(stds)) if stds else 0.0
+                else:
+                    stats.gpu_time_per_ray_us = None
+                    stats.gpu_warp_divergence_proxy = None
+            except Exception:
+                # GPU unavailable or failed; mark fields as None and continue
+                stats.gpu_time_per_ray_us = None
+                stats.gpu_warp_divergence_proxy = None
+
             analyzer.add_result(stats)
 
             if not args.no_save_images:
@@ -184,12 +219,12 @@ def cli(argv: Optional[list[str]] = None) -> int:
         print("\n" + "="*80)
         print_comparison_tables(analyzer, results_dir)
         
-        # Generation charts
+        # Generation charts (non-fatal)
         if not args.no_save_images:
             try:
                 render_charts(analyzer, results_dir)
                 print(f"  Saved comparative charts to: {results_dir}")
-                
+
                 # Tiled comparisons per scene
                 for scene_name in analyzer.get_scenes():
                     strat_stats = [s for s in analyzer.all_stats if s.scene_name == scene_name]
@@ -199,16 +234,21 @@ def cli(argv: Optional[list[str]] = None) -> int:
                         if maps:
                             fname = f"compare__{_safe_name(scene_name)}.png"
                             save_tiled_comparison(maps, labels, os.path.join(results_dir, fname))
-                
-                # Report
-                report_path = generate_markdown_report(analyzer, results_dir)
-                print(f"  Generated Markdown report: {report_path}")
-                
-                # CSV Matrices
-                analyzer.save_csv_matrices(results_dir)
-                print(f"  Saved CSV matrices to: {results_dir}")
             except Exception as e:
-                print(f"  [Error] Failed to generate comparisons: {e}")
+                print(f"  [Warning] Chart generation failed: {e}")
+
+        # REPORT + CSVs — always attempt these (don't let charts break report generation)
+        try:
+            report_path = generate_markdown_report(analyzer, results_dir)
+            print(f"  Generated Markdown report: {report_path}")
+        except Exception as e:
+            print(f"  [Error] Failed to generate Markdown report: {e}")
+
+        try:
+            analyzer.save_csv_matrices(results_dir)
+            print(f"  Saved CSV matrices to: {results_dir}")
+        except Exception as e:
+            print(f"  [Error] Failed to save CSV matrices: {e}")
 
     if args.json and analyzer.all_stats:
         summary = []
