@@ -373,6 +373,12 @@ class ThinPlanesScene(SDFScene):
         d_shell = abs(sd_plane(q, Vec3(0.0, 1.0, 0.0), 0.0)) - 0.01
         return d_shell
 
+    def suggested_camera(self) -> Optional[RenderConfig]:
+        return RenderConfig(
+            camera_position=(0.0, 0.25, 5.0),
+            camera_target=(0.0, 0.25, 0.0),
+        )
+
 
 # ──────────────────────────────────────────────
 # Scene registry
