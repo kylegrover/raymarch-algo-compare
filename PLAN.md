@@ -37,5 +37,6 @@ raymarching_benchmark/
 │   ├── tables.py            # Console and file table output
 │   ├── heatmaps.py          # Iteration/cost heatmap rendering
 │   └── charts.py            # Comparative charts
+        - stub/incomplete for now
 └── config.py                # Global configuration
 ```
