@@ -122,7 +122,11 @@ def _save_outputs(stats: RayMarchStats, results_dir: str, max_iters: Optional[in
         'warp_divergence': float(stats.warp_divergence_proxy),
         'time_us_per_ray': float(stats.time_per_ray_us),
         'gpu_time_us_per_ray': float(stats.gpu_time_per_ray_us) if stats.gpu_time_per_ray_us is not None else None,
+        'gpu_time_us_per_ray_median': float(stats.gpu_time_per_ray_median_us) if stats.gpu_time_per_ray_median_us is not None else None,
+        'gpu_time_sample_count': int(stats.gpu_time_sample_count) if stats.gpu_time_sample_count is not None else None,
         'gpu_warp_divergence': float(stats.gpu_warp_divergence_proxy) if stats.gpu_warp_divergence_proxy is not None else None,
+        'gpu_width': int(stats.gpu_width) if getattr(stats, 'gpu_width', None) is not None else None,
+        'gpu_height': int(stats.gpu_height) if getattr(stats, 'gpu_height', None) is not None else None,
     }
     with open(json_path, 'w', encoding='utf-8') as f:
         json.dump(compact, f, indent=2)
@@ -134,6 +138,9 @@ def cli(argv: Optional[list[str]] = None) -> int:
     p = argparse.ArgumentParser(prog="raymarch-bench", description="Ray marching benchmark runner")
     p.add_argument("--width", type=int, default=64)
     p.add_argument("--height", type=int, default=48)
+    p.add_argument("--gpu-width", type=int, default=None, help="GPU render width (overrides CPU width)")
+    p.add_argument("--gpu-height", type=int, default=None, help="GPU render height (overrides CPU height)")
+    p.add_argument("--gpu-1080p", action='store_true', help="Shortcut: run GPU measurements at 1920x1080")
     p.add_argument("--scene", type=str, default="Sphere",
                    help="Scene name (comma-separated, or 'all')")
     p.add_argument("--strategy", type=str, default="Standard",
@@ -147,6 +154,16 @@ def cli(argv: Optional[list[str]] = None) -> int:
     args = p.parse_args(argv)
 
     rc = RenderConfig(width=args.width, height=args.height)
+    # Determine GPU render config: explicit flags > --gpu-1080p shortcut > CPU resolution
+    if args.gpu_width is not None or args.gpu_height is not None:
+        gw = args.gpu_width or args.width
+        gh = args.gpu_height or args.height
+        gpu_rc = RenderConfig(width=int(gw), height=int(gh))
+    elif args.gpu_1080p:
+        gpu_rc = RenderConfig(width=1920, height=1080)
+    else:
+        gpu_rc = rc
+
     mc = MarchConfig()
     if args.kappa is not None:
         mc.kappa = float(args.kappa)
@@ -182,13 +199,22 @@ def cli(argv: Optional[list[str]] = None) -> int:
             # consistently contain CPU+GPU columns. Fail gracefully if GPU is not available.
             try:
                 from .gpu.runner import run_gpu_benchmark
-                gpu_res = run_gpu_benchmark(scene_name, strat_name, rc, mc)
+                gpu_res = run_gpu_benchmark(scene_name, strat_name, gpu_rc, mc)
                 if gpu_res is not None:
                     # pixels[...,1] encodes iterations/maxIterations
                     pixels = gpu_res['pixels']
                     render_time_s = float(gpu_res['render_time_s'])
                     gpu_iters = pixels[..., 1] * mc.max_iterations
-                    stats.gpu_time_per_ray_us = (render_time_s / (rc.width * rc.height)) * 1e6
+
+                    # Record GPU resolution used for this measurement
+                    stats.gpu_width = int(gpu_rc.width)
+                    stats.gpu_height = int(gpu_rc.height)
+
+                    # time per ray should use the GPU render resolution
+                    stats.gpu_time_per_ray_us = (render_time_s / (gpu_rc.width * gpu_rc.height)) * 1e6
+                    # populate basic sample metadata (single-sample legacy); future changes will add repeats
+                    stats.gpu_time_sample_count = 1
+                    stats.gpu_time_per_ray_median_us = float(stats.gpu_time_per_ray_us)
 
                     # compute warp-divergence proxy on GPU iteration map (same proxy as CPU)
                     h, w = gpu_iters.shape
@@ -203,6 +229,8 @@ def cli(argv: Optional[list[str]] = None) -> int:
                     stats.gpu_warp_divergence_proxy = float(sum(stds) / len(stds)) if stds else 0.0
                 else:
                     stats.gpu_time_per_ray_us = None
+                    stats.gpu_time_per_ray_median_us = None
+                    stats.gpu_time_sample_count = None
                     stats.gpu_warp_divergence_proxy = None
             except Exception:
                 # GPU unavailable or failed; mark fields as None and continue

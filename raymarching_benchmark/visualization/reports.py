@@ -52,6 +52,16 @@ def generate_markdown_report(analyzer: MetricsAnalyzer, output_dir: str):
         lines.append("> Note: GPU timings (where shown) are measured by executing the GLSL shader via ModernGL and")
         lines.append("> dividing the synchronous GPU render time by the number of pixels. Readback is excluded; driver/submit")
         lines.append("> overhead may still be included. Use the `gpu_validation__*.csv` in the `results/` folder for raw data.")
+
+        # If GPU measurements were taken at non-uniform resolutions, surface them here so
+        # readers know which timing rows are not directly comparable by pixel-count.
+        gpu_resolutions = set()
+        for s in analyzer.all_stats:
+            gw, gh = getattr(s, 'gpu_width', None), getattr(s, 'gpu_height', None)
+            if gw and gh:
+                gpu_resolutions.add(f"{gw}x{gh}")
+        if gpu_resolutions:
+            lines.append(f"> GPU measurements were taken at: **{', '.join(sorted(gpu_resolutions))}**")
         lines.append("")
 
     # 1. Charts

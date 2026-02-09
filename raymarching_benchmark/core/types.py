@@ -54,7 +54,13 @@ class RayMarchStats:
 
     # GPU-measured timing and divergence (populated when GPU runner is available)
     gpu_time_per_ray_us: Optional[float] = None
+    gpu_time_per_ray_median_us: Optional[float] = None
+    gpu_time_sample_count: Optional[int] = None
     gpu_warp_divergence_proxy: Optional[float] = None
+
+    # GPU measurement resolution (may differ from CPU RenderConfig)
+    gpu_width: Optional[int] = None
+    gpu_height: Optional[int] = None
 
     # Warp divergence proxy (std of iterations in local neighborhoods)
     warp_divergence_proxy: float = 0.0
