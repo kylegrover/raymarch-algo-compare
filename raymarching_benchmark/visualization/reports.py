@@ -34,6 +34,12 @@ def generate_markdown_report(analyzer: MetricsAnalyzer, output_dir: str):
         except Exception:
             gpu_df = None
 
+    # Also consider per-run GPU fields present in the analyzer (we may have GPU timings
+    # even if `gpu_confirm.py` wasn't executed to produce a `gpu_validation__*.csv`).
+    has_gpu = gpu_df is not None or any(
+        getattr(s, 'gpu_time_per_ray_us', None) is not None for s in analyzer.all_stats
+    )
+
     lines = []
     lines.append("# Ray Marching Algorithm Benchmark Report")
     lines.append("")
@@ -42,7 +48,7 @@ def generate_markdown_report(analyzer: MetricsAnalyzer, output_dir: str):
     lines.append("")
 
     # GPU note
-    if gpu_df is not None:
+    if has_gpu:
         lines.append("> Note: GPU timings (where shown) are measured by executing the GLSL shader via ModernGL and")
         lines.append("> dividing the synchronous GPU render time by the number of pixels. Readback is excluded; driver/submit")
         lines.append("> overhead may still be included. Use the `gpu_validation__*.csv` in the `results/` folder for raw data.")
@@ -96,13 +102,13 @@ def generate_markdown_report(analyzer: MetricsAnalyzer, output_dir: str):
 
         # Build header with optional GPU columns
         row_hdr = "| Strategy | Iterations | Hit Rate | P95 | Warp Div | CPU Time (us/ray)"
-        if gpu_df is not None:
+        if has_gpu:
             row_hdr += " | GPU Time (us/ray) | GPU WD"
         row_hdr += " |"
         lines.append(row_hdr)
 
         sep = "| :--- | :---: | :---: | :---: | :---: | :---:"
-        if gpu_df is not None:
+        if has_gpu:
             sep += " | :---: | :---:"
         sep += " |"
         lines.append(sep)
@@ -111,7 +117,7 @@ def generate_markdown_report(analyzer: MetricsAnalyzer, output_dir: str):
             stat = analyzer.get_stat(strat, scene)
             if not stat:
                 # stat missing: emit an empty row so the table shape is stable
-                if gpu_df is not None:
+                if has_gpu:
                     lines.append(f"| {strat} | {'-':>8} | {'-':>6} | {'-':>4} | {'-':>8} | {'-':>12} | {'-':>12} | {'-':>6} |")
                 else:
                     lines.append(f"| {strat} | {'-':>8} | {'-':>6} | {'-':>4} | {'-':>8} | {'-':>12} |")
@@ -122,7 +128,7 @@ def generate_markdown_report(analyzer: MetricsAnalyzer, output_dir: str):
             gpu_time_str = f"{gpu_time:.2f}" if gpu_time is not None else "-"
             gpu_wd_str = f"{gpu_wd:.2f}" if gpu_wd is not None else "-"
 
-            if gpu_df is not None:
+            if has_gpu:
                 base = (f"| {strat} | {stat.iteration_mean:.2f} | {stat.hit_rate:.1%} | "
                         f"{stat.iteration_p95:.1f} | {stat.warp_divergence_proxy:.2f} | {stat.time_per_ray_us:.2f} | {gpu_time_str} | {gpu_wd_str} |")
             else:
