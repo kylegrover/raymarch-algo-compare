@@ -90,12 +90,19 @@ uv run -m raymarching_benchmark --width 64 --height 48
 18. **Scene name matching** — replace fragile substring matching with exact-name lookup (+ alias support).
 19. **README** — usage examples, sample output, architecture diagram.
 
-## Phase 5 — Stretch Goals
+## Phase 5 — GPU Backend & Formal Validation
 
-20. **Performance profiling** — identify bottleneck (likely pure-Python SDF eval), consider numpy vectorization.
-21. **Taichi GPU backend** — optional GPU acceleration for large resolutions.
-22. **Additional scenes** — user-contributed scenes, parametric scene generators.
-23. **Interactive mode** — pick scene/strategy from a menu, see live heatmap.
+20. **ModernGL GPU runner** — Create `raymarching_benchmark/gpu/` for GLSL execution.
+21. **GLSL Strategy library** — Implement all 7 strategies in GLSL (`strategies.glsl`).
+22. **GLSL Scene library** — Port the 14 SDF scenes to GLSL (`scenes.glsl`).
+23. **GPU vs CPU validation** — script to run both and verify iteration/heatmaps match (within epsilon).
+24. **GPU performance metrics** — benchmark execution time at 1080p+ to see if scaling patterns hold.
+
+## Phase 6 — Interactive Mode & Final Polish
+
+25. **Additional scenes** — user-contributed scenes, parametric scene generators.
+26. **Interactive mode** — pick scene/strategy from a menu, see live heatmap.
+27. **README** — usage examples, sample output, architecture diagram.
 
 ---
 
