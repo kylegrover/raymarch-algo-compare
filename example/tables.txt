@@ -1,0 +1,55 @@
+====================================================================================================
+RAY MARCHING STRATEGY BENCHMARK RESULTS
+====================================================================================================
+
+Scene                                   AR-ST Curvature-Aware Tracing       Enhanced         Hybrid Overstep-Bisect Relaxed(ω=1.2)        Segment Slope-AR(β=0.3)       Standard
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+── Mean Iterations per Ray ──
+Scene                                   AR-ST Curvature-Aware Tracing       Enhanced         Hybrid Overstep-Bisect Relaxed(ω=1.2)        Segment Slope-AR(β=0.3)       Standard
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+Sphere                                   7.73           9.02           8.38           9.26           9.27           8.08           5.86           7.75           9.32
+Grazing Plane                           38.31          42.18          41.92          38.99          35.24          38.34          24.51          27.69          45.76
+Cube                                     6.52           7.95           7.40           7.95           8.09           6.82           5.26           6.87           7.95
+Thin Torus                               6.61           8.04           7.37           8.07           8.07           6.81           5.37           7.00           8.08
+Cylinder                                 6.61           7.88           7.32           7.99           8.07           6.87           5.27           6.96           8.03
+Near Miss                                6.74           8.10           7.54           8.28           8.28           6.94           5.46           7.12           8.32
+Hollow Cube (CSG)                        6.57           8.18           7.65           8.20           8.28           6.88           5.39           7.07           8.20
+Smooth Blend                             6.27           7.63           7.06           7.66           7.71           6.50           5.12           6.76           7.69
+Onion Shell                              8.65           9.12           8.53           9.65           9.67           8.96           6.07           8.06           9.71
+Menger Sponge (iter=3)                   6.83           8.41           7.91           8.36           8.40           7.18           5.50           7.23           8.43
+Mandelbulb                              15.75          16.50          15.65          16.64          15.09          16.68          10.27          14.13          18.24
+Bad Lipschitz Sphere                     4.73           5.81           5.50           5.81           5.81           5.00           7.24           5.30           5.81
+Pillar Forest                           25.45          25.82          27.38          28.65          28.87          26.43          15.47          25.26          29.31
+Thin Planes Stack                       61.27          64.65          64.36          55.29          44.92          58.84          40.22          44.03          68.46
+
+── Strategy Summary (aggregated) ──
+Strategy               avg_iters    hit_rate    wins    warp_div     time_us
+----------------------------------------------------------------------------
+AR-ST                      14.86      20.39%       1        2.55       32.30
+Curvature-Aware Tracing       16.38      21.07%       0        3.14       41.97
+Enhanced                   16.00      20.68%       0        3.21       33.56
+Hybrid                     15.77      21.17%       0        2.80       33.49
+Overstep-Bisect            14.70      21.18%       0        2.62       30.17
+Relaxed(ω=1.2)             15.02      20.74%       0        2.91       31.55
+Segment                    10.50      22.39%      13        2.05       36.73
+Slope-AR(β=0.3)            12.95      21.21%       0        2.35       28.27
+Standard                   17.38      21.07%       0        3.19       33.94
+
+── Per-scene best/worst (by mean iterations) ──
+Scene                                   best    best_iters         worst   worst_iters   speedup
+----------------------------------------------------------------------------------------------------
+Sphere                               Segment          5.86      Standard          9.32      1.59x
+Grazing Plane                        Segment         24.51      Standard         45.76      1.87x
+Cube                                 Segment          5.26Overstep-Bisect          8.09      1.54x
+Thin Torus                           Segment          5.37      Standard          8.08      1.51x
+Cylinder                             Segment          5.27Overstep-Bisect          8.07      1.53x
+Near Miss                            Segment          5.46      Standard          8.32      1.52x
+Hollow Cube (CSG)                    Segment          5.39Overstep-Bisect          8.28      1.54x
+Smooth Blend                         Segment          5.12Overstep-Bisect          7.71      1.51x
+Onion Shell                          Segment          6.07      Standard          9.71      1.60x
+Menger Sponge (iter=3)               Segment          5.50      Standard          8.43      1.53x
+Mandelbulb                           Segment         10.27      Standard         18.24      1.78x
+Bad Lipschitz Sphere                   AR-ST          4.73       Segment          7.24      1.53x
+Pillar Forest                        Segment         15.47      Standard         29.31      1.89x
+Thin Planes Stack                    Segment         40.22      Standard         68.46      1.70x

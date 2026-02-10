@@ -1,0 +1,18 @@
+{
+  "strategy": "Relaxed(\u03c9=1.2)",
+  "scene": "Sphere",
+  "total_rays": 20736,
+  "hit_count": 1152,
+  "hit_rate": 0.05555555555555555,
+  "iteration_mean": 8.075038580246913,
+  "iteration_p95": 13.0,
+  "iteration_max": 122,
+  "warp_divergence": 0.6472325024269406,
+  "time_us_per_ray": 11.12174479967058,
+  "gpu_time_us_per_ray": 0.0001696325740834445,
+  "gpu_time_us_per_ray_median": 0.00017922940497993732,
+  "gpu_time_sample_count": 10,
+  "gpu_warp_divergence": 0.25850758590264084,
+  "gpu_width": 1920,
+  "gpu_height": 1080
+}

@@ -1,0 +1,18 @@
+{
+  "strategy": "Curvature-Aware Tracing",
+  "scene": "Smooth Blend",
+  "total_rays": 20736,
+  "hit_count": 466,
+  "hit_rate": 0.022472993827160493,
+  "iteration_mean": 7.627314814814815,
+  "iteration_p95": 11.0,
+  "iteration_max": 378,
+  "warp_divergence": 0.5088954706482478,
+  "time_us_per_ray": 32.59093846506324,
+  "gpu_time_us_per_ray": 0.0010786458499942343,
+  "gpu_time_us_per_ray_median": 0.0006677517960247595,
+  "gpu_time_sample_count": 10,
+  "gpu_warp_divergence": 0.21529885107444394,
+  "gpu_width": 1920,
+  "gpu_height": 1080
+}

@@ -1,0 +1,18 @@
+{
+  "strategy": "Overstep-Bisect",
+  "scene": "Sphere",
+  "total_rays": 20736,
+  "hit_count": 1152,
+  "hit_rate": 0.05555555555555555,
+  "iteration_mean": 9.269675925925926,
+  "iteration_p95": 14.0,
+  "iteration_max": 60,
+  "warp_divergence": 0.577362082510535,
+  "time_us_per_ray": 11.448085466708793,
+  "gpu_time_us_per_ray": 0.0007894242217945348,
+  "gpu_time_us_per_ray_median": 0.0005228829885945068,
+  "gpu_time_sample_count": 10,
+  "gpu_warp_divergence": 0.34573919158290933,
+  "gpu_width": 1920,
+  "gpu_height": 1080
+}

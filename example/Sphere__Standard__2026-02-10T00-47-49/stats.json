@@ -1,0 +1,18 @@
+{
+  "strategy": "Standard",
+  "scene": "Sphere",
+  "total_rays": 20736,
+  "hit_count": 1152,
+  "hit_rate": 0.05555555555555555,
+  "iteration_mean": 9.317322530864198,
+  "iteration_p95": 14.0,
+  "iteration_max": 138,
+  "warp_divergence": 0.8101537116212462,
+  "time_us_per_ray": 11.108318883796326,
+  "gpu_time_us_per_ray": 0.00022051507484219552,
+  "gpu_time_us_per_ray_median": 0.00018769298302136179,
+  "gpu_time_sample_count": 10,
+  "gpu_warp_divergence": 0.25850758590264084,
+  "gpu_width": 1920,
+  "gpu_height": 1080
+}
