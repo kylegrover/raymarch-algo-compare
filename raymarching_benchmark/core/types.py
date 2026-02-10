@@ -56,6 +56,7 @@ class RayMarchStats:
     gpu_time_per_ray_us: Optional[float] = None
     gpu_time_per_ray_median_us: Optional[float] = None
     gpu_time_sample_count: Optional[int] = None
+    gpu_frame_ms_median: Optional[float] = None
     gpu_warp_divergence_proxy: Optional[float] = None
 
     # GPU measurement resolution (may differ from CPU RenderConfig)

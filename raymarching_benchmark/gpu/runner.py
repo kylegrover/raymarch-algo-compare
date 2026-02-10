@@ -130,16 +130,18 @@ class GPURunner:
         render_time_s = end - start
         return pixels, render_time_s
 
-def run_gpu_benchmark(scene_name: str, strategy_name: str, render_cfg: RenderConfig, march_cfg: MarchConfig):
+def run_gpu_benchmark(scene_name: str, strategy_name: str, render_cfg: RenderConfig, march_cfg: MarchConfig, *, gpu_warmup: int = 3, gpu_repeats: int = 7):
     from ..strategies import list_strategies
     from ..scenes.catalog import get_all_scenes
-    
+    import statistics as _stats
+
     scenes = get_all_scenes()
     scene = next((s for s in scenes if s.name == scene_name), None)
-    if not scene: return None
-    
+    if not scene:
+        return None
+
     scene_id = scenes.index(scene)
-    
+
     # Map strategy name to ID
     strategy_map = {
         "Standard": 0,
@@ -151,7 +153,37 @@ def run_gpu_benchmark(scene_name: str, strategy_name: str, render_cfg: RenderCon
         "Hybrid": 1, # Using Overstep-Bisect as Hybrid proxy for now
     }
     strat_id = strategy_map.get(strategy_name, 0)
-    
+
     runner = GPURunner()
-    pixels, render_time_s = runner.render(scene_id, strat_id, render_cfg, march_cfg, lipschitz=scene.known_lipschitz_bound())
-    return {"pixels": pixels, "render_time_s": render_time_s}
+
+    # Warmup frames (discarded)
+    for _ in range(max(0, int(gpu_warmup))):
+        _ = runner.render(scene_id, strat_id, render_cfg, march_cfg, lipschitz=scene.known_lipschitz_bound())
+
+    # Measured repeats
+    times = []
+    pixels_by_iter = []
+    for _ in range(max(1, int(gpu_repeats))):
+        pixels, t = runner.render(scene_id, strat_id, render_cfg, march_cfg, lipschitz=scene.known_lipschitz_bound())
+        times.append(float(t))
+        pixels_by_iter.append(pixels)
+
+    # Compute median/IQR and choose median run's pixels for divergence analysis
+    times_sorted = sorted(times)
+    median_t = float(_stats.median(times_sorted))
+    q1 = float(_stats.median(times_sorted[:len(times_sorted)//2]))
+    q3 = float(_stats.median(times_sorted[(len(times_sorted)+1)//2:]))
+    iqr = q3 - q1
+
+    # Pick the pixels from the median-timed repeat (closest match)
+    median_idx = min(range(len(times)), key=lambda i: abs(times[i] - median_t))
+    median_pixels = pixels_by_iter[median_idx]
+
+    return {
+        "pixels": median_pixels,
+        "render_times_s": times,
+        "render_time_s_median": median_t,
+        "render_time_s_iqr": iqr,
+        "render_time_s_mean": float(sum(times)/len(times)),
+        "sample_count": len(times),
+    }

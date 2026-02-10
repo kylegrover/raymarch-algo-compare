@@ -102,10 +102,18 @@ class MetricsAnalyzer:
             avg_p99 = np.mean([s.iteration_p99 for s in stats_for_strat])
             avg_time = np.mean([s.time_per_ray_us for s in stats_for_strat])
             # GPU fields: ignore None values
-            gpu_times = [s.gpu_time_per_ray_us for s in stats_for_strat if getattr(s, 'gpu_time_per_ray_us', None) is not None]
+            # Prefer median GPU time if available (more robust to outliers/repeats)
+            gpu_medians = [getattr(s, 'gpu_time_per_ray_median_us', None) for s in stats_for_strat if getattr(s, 'gpu_time_per_ray_median_us', None) is not None]
+            gpu_legacy = [s.gpu_time_per_ray_us for s in stats_for_strat if getattr(s, 'gpu_time_per_ray_us', None) is not None and getattr(s, 'gpu_time_per_ray_median_us', None) is None]
+            gpu_times = gpu_medians + gpu_legacy
+
             gpu_wds = [s.gpu_warp_divergence_proxy for s in stats_for_strat if getattr(s, 'gpu_warp_divergence_proxy', None) is not None]
             avg_gpu_time = float(np.mean(gpu_times)) if gpu_times else None
             avg_gpu_wd = float(np.mean(gpu_wds)) if gpu_wds else None
+
+            # ms/frame median where available
+            frame_ms = [getattr(s, 'gpu_frame_ms_median', None) for s in stats_for_strat if getattr(s, 'gpu_frame_ms_median', None) is not None]
+            avg_gpu_frame_ms = float(np.mean(frame_ms)) if frame_ms else None
 
             summary[strat] = {
                 'avg_mean_iterations': float(avg_iters),
@@ -117,6 +125,8 @@ class MetricsAnalyzer:
                 'avg_p99_iterations': float(avg_p99),
                 'avg_time_per_ray_us': float(avg_time),
                 'avg_gpu_time_per_ray_us': avg_gpu_time,
+                'avg_gpu_frame_ms': avg_gpu_frame_ms,
+                'avg_gpu_sample_count': float(np.mean([s.gpu_time_sample_count for s in stats_for_strat if getattr(s, 'gpu_time_sample_count', None) is not None])) if any(getattr(s, 'gpu_time_sample_count', None) is not None for s in stats_for_strat) else None,
                 'avg_gpu_warp_divergence': avg_gpu_wd,
             }
 
@@ -144,7 +154,11 @@ class MetricsAnalyzer:
         """Save iteration_mean and time_per_ray matrices as CSV files."""
         os.makedirs(output_dir, exist_ok=True)
         
-        metrics = ['iteration_mean', 'time_per_ray_us', 'hit_rate', 'warp_divergence_proxy', 'gpu_time_per_ray_us', 'gpu_warp_divergence_proxy']
+        metrics = [
+            'iteration_mean', 'time_per_ray_us', 'hit_rate', 'warp_divergence_proxy',
+            'gpu_time_per_ray_us', 'gpu_time_per_ray_median_us', 'gpu_frame_ms_median', 'gpu_time_sample_count',
+            'gpu_warp_divergence_proxy'
+        ]
         
         import pandas as pd
         

@@ -81,21 +81,24 @@ def generate_markdown_report(analyzer: MetricsAnalyzer, output_dir: str):
     lines.append("")
     summary = analyzer.strategy_summary()
 
-    # Always include GPU columns now (values will be '-' if missing)
-    header = "| Strategy | Iterations (avg) | Hit Rate | Wins | Warp Div | CPU Time (us/ray) | GPU Time (us/ray) | GPU WD |"
-    sep = "| :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: |"
+    # Always include GPU columns now (values will be '-' if missing). Prefer median-based GPU timing when available.
+    header = "| Strategy | Iterations (avg) | Hit Rate | Wins | Warp Div | CPU Time (us/ray) | GPU Time (us/ray) (median) | GPU ms/frame (median) | GPU samples | GPU WD |"
+    sep = "| :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: |"
 
     lines.append(header)
     lines.append(sep)
 
     for strat, vals in summary.items():
         gpu_time = vals.get('avg_gpu_time_per_ray_us')
+        gpu_frame_ms = vals.get('avg_gpu_frame_ms') if vals.get('avg_gpu_frame_ms') is not None else None
         gpu_wd = vals.get('avg_gpu_warp_divergence')
+        gpu_samples = vals.get('avg_gpu_sample_count', '-')
         gpu_time_str = f"{gpu_time:.2f}" if gpu_time is not None else "-"
+        gpu_frame_str = f"{gpu_frame_ms:.2f}" if gpu_frame_ms is not None else "-"
         gpu_wd_str = f"{gpu_wd:.2f}" if gpu_wd is not None else "-"
 
         row = (f"| {strat} | {vals['avg_mean_iterations']:.2f} | {vals['avg_hit_rate']:.1%} | "
-               f"{vals['num_wins']} | {vals['avg_warp_divergence']:.2f} | {vals['avg_time_per_ray_us']:.2f} | {gpu_time_str} | {gpu_wd_str} |")
+               f"{vals['num_wins']} | {vals['avg_warp_divergence']:.2f} | {vals['avg_time_per_ray_us']:.2f} | {gpu_time_str} | {gpu_frame_str} | {gpu_samples} | {gpu_wd_str} |")
         lines.append(row)
     lines.append("")
 
@@ -113,13 +116,13 @@ def generate_markdown_report(analyzer: MetricsAnalyzer, output_dir: str):
         # Build header with optional GPU columns
         row_hdr = "| Strategy | Iterations | Hit Rate | P95 | Warp Div | CPU Time (us/ray)"
         if has_gpu:
-            row_hdr += " | GPU Time (us/ray) | GPU WD"
+            row_hdr += " | GPU Time (us/ray) (median) | GPU ms/frame (median) | GPU samples | GPU WD"
         row_hdr += " |"
         lines.append(row_hdr)
 
         sep = "| :--- | :---: | :---: | :---: | :---: | :---:"
         if has_gpu:
-            sep += " | :---: | :---:"
+            sep += " | :---: | :---: | :---: | :---:"
         sep += " |"
         lines.append(sep)
 
@@ -128,19 +131,24 @@ def generate_markdown_report(analyzer: MetricsAnalyzer, output_dir: str):
             if not stat:
                 # stat missing: emit an empty row so the table shape is stable
                 if has_gpu:
-                    lines.append(f"| {strat} | {'-':>8} | {'-':>6} | {'-':>4} | {'-':>8} | {'-':>12} | {'-':>12} | {'-':>6} |")
+                    lines.append(f"| {strat} | {'-':>8} | {'-':>6} | {'-':>4} | {'-':>8} | {'-':>12} | {'-':>12} | {'-':>8} | {'-':>6} |")
                 else:
                     lines.append(f"| {strat} | {'-':>8} | {'-':>6} | {'-':>4} | {'-':>8} | {'-':>12} |")
                 continue
 
-            gpu_time = getattr(stat, 'gpu_time_per_ray_us', None)
+            gpu_time = getattr(stat, 'gpu_time_per_ray_median_us', None) or getattr(stat, 'gpu_time_per_ray_us', None)
+            gpu_frame = getattr(stat, 'gpu_frame_ms_median', None)
+            gpu_samples = getattr(stat, 'gpu_time_sample_count', None)
             gpu_wd = getattr(stat, 'gpu_warp_divergence_proxy', None)
-            gpu_time_str = f"{gpu_time:.2f}" if gpu_time is not None else "-"
+
+            gpu_time_str = f"{gpu_time:.4f}" if gpu_time is not None else "-"
+            gpu_frame_str = f"{gpu_frame:.2f}" if gpu_frame is not None else "-"
             gpu_wd_str = f"{gpu_wd:.2f}" if gpu_wd is not None else "-"
+            gpu_samples_str = str(gpu_samples) if gpu_samples is not None else "-"
 
             if has_gpu:
                 base = (f"| {strat} | {stat.iteration_mean:.2f} | {stat.hit_rate:.1%} | "
-                        f"{stat.iteration_p95:.1f} | {stat.warp_divergence_proxy:.2f} | {stat.time_per_ray_us:.2f} | {gpu_time_str} | {gpu_wd_str} |")
+                        f"{stat.iteration_p95:.1f} | {stat.warp_divergence_proxy:.2f} | {stat.time_per_ray_us:.2f} | {gpu_time_str} | {gpu_frame_str} | {gpu_samples_str} | {gpu_wd_str} |")
             else:
                 base = (f"| {strat} | {stat.iteration_mean:.2f} | {stat.hit_rate:.1%} | "
                         f"{stat.iteration_p95:.1f} | {stat.warp_divergence_proxy:.2f} | {stat.time_per_ray_us:.2f} |")

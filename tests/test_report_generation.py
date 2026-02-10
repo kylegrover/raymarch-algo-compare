@@ -40,3 +40,21 @@ def test_report_includes_gpu_resolution_and_stats(tmp_path):
     assert "GPU measurements were taken at: **1920x1080**" in text
     assert "GPU Time (us/ray)" in text
     assert "0.45" in text  # median appears somewhere in the report
+
+
+def test_analyzer_prefers_gpu_median_for_aggregation():
+    from raymarching_benchmark.metrics.analyzer import MetricsAnalyzer
+    from raymarching_benchmark.core.types import RayMarchStats
+    a = MetricsAnalyzer()
+    s1 = RayMarchStats('A','S')
+    s1.gpu_time_per_ray_us = 1.0
+    s2 = RayMarchStats('A','T')
+    s2.gpu_time_per_ray_median_us = 0.1
+    s2.gpu_width = 1920
+    s2.gpu_height = 1080
+    a.add_result(s1)
+    a.add_result(s2)
+    summary = a.strategy_summary()
+    # average should consider the median value (0.1) and legacy value (1.0)
+    assert 'A' in summary
+    assert summary['A']['avg_gpu_time_per_ray_us'] is not None

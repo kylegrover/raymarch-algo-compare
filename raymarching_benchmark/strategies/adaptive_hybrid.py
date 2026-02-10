@@ -15,11 +15,14 @@ class AdaptiveHybridTracing(MarchStrategy):
     """
 
     def __init__(self, stuck_threshold: int = 5, stuck_step_ratio: float = 0.001,
-                 min_step_factor: float = 0.005, bisection_steps: int = 12):
+                 min_step_factor: float = 0.005, bisection_steps: int = 12,
+                 fallback_to_segment_after: int | None = None):
         self._stuck_threshold = stuck_threshold
         self._stuck_step_ratio = stuck_step_ratio
         self._min_step_factor = min_step_factor
         self._bisection_steps = bisection_steps
+        # Experimental: fallback to Segment tracing after N iterations (per-ray)
+        self.fallback_to_segment_after = fallback_to_segment_after
 
     @property
     def name(self) -> str:

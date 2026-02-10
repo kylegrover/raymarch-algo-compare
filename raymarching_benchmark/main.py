@@ -29,7 +29,8 @@ from .visualization.reports import generate_markdown_report
 def run_once(render: Optional[RenderConfig] = None,
              march: Optional[MarchConfig] = None,
              scene_name: str = "Sphere",
-             strategy_name: str = "Standard") -> RayMarchStats:
+             strategy_name: str = "Standard",
+             hybrid_fallback_iter: int | None = None) -> RayMarchStats:
     """Run a single small benchmark and return the stats (callable from tests)."""
     render = render or RenderConfig(width=64, height=48)
     march = march or MarchConfig()
@@ -37,6 +38,13 @@ def run_once(render: Optional[RenderConfig] = None,
     # Resolve scene & strategy
     scene = get_scene_by_name(scene_name) or SphereScene()
     strategy = get_strategy_by_name(strategy_name) or StandardSphereTracing()
+
+    # If caller requested an experimental hybrid->segment fallback, apply it
+    if hybrid_fallback_iter is not None and hasattr(strategy, 'fallback_to_segment_after'):
+        try:
+            strategy.fallback_to_segment_after = int(hybrid_fallback_iter)
+        except Exception:
+            pass
 
     # Wire suggested camera
     suggestion = scene.suggested_camera()
@@ -141,6 +149,9 @@ def cli(argv: Optional[list[str]] = None) -> int:
     p.add_argument("--gpu-width", type=int, default=None, help="GPU render width (overrides CPU width)")
     p.add_argument("--gpu-height", type=int, default=None, help="GPU render height (overrides CPU height)")
     p.add_argument("--gpu-1080p", action='store_true', help="Shortcut: run GPU measurements at 1920x1080")
+    p.add_argument("--gpu-warmup", type=int, default=3, help="Number of warmup GPU frames to discard")
+    p.add_argument("--gpu-repeats", type=int, default=7, help="Number of GPU timed repeats (median reported)")
+    p.add_argument("--hybrid-fallback-iter", type=int, default=None, help="(experimental) Hybrid: fallback to Segment after N iterations")
     p.add_argument("--scene", type=str, default="Sphere",
                    help="Scene name (comma-separated, or 'all')")
     p.add_argument("--strategy", type=str, default="Standard",
@@ -192,31 +203,34 @@ def cli(argv: Optional[list[str]] = None) -> int:
     for scene_name in scene_names:
         for strat_name in strategy_names:
             print(f"\n>> Scene: {scene_name} | Strategy: {strat_name}")
-            stats = run_once(render=rc, march=mc, scene_name=scene_name, strategy_name=strat_name)
+            stats = run_once(render=rc, march=mc, scene_name=scene_name, strategy_name=strat_name, hybrid_fallback_iter=args.hybrid_fallback_iter)
             _print_stats(stats)
 
             # Always attempt a GPU validation run for the same scene/strategy so reports
             # consistently contain CPU+GPU columns. Fail gracefully if GPU is not available.
             try:
                 from .gpu.runner import run_gpu_benchmark
-                gpu_res = run_gpu_benchmark(scene_name, strat_name, gpu_rc, mc)
+                gpu_res = run_gpu_benchmark(scene_name, strat_name, gpu_rc, mc,
+                                            gpu_warmup=int(args.gpu_warmup), gpu_repeats=int(args.gpu_repeats))
                 if gpu_res is not None:
                     # pixels[...,1] encodes iterations/maxIterations
                     pixels = gpu_res['pixels']
-                    render_time_s = float(gpu_res['render_time_s'])
-                    gpu_iters = pixels[..., 1] * mc.max_iterations
 
-                    # Record GPU resolution used for this measurement
+                    # record resolution
                     stats.gpu_width = int(gpu_rc.width)
                     stats.gpu_height = int(gpu_rc.height)
 
-                    # time per ray should use the GPU render resolution
-                    stats.gpu_time_per_ray_us = (render_time_s / (gpu_rc.width * gpu_rc.height)) * 1e6
-                    # populate basic sample metadata (single-sample legacy); future changes will add repeats
-                    stats.gpu_time_sample_count = 1
-                    stats.gpu_time_per_ray_median_us = float(stats.gpu_time_per_ray_us)
+                    # timing: prefer median across repeats
+                    median_s = float(gpu_res.get('render_time_s_median', gpu_res['render_times_s'][0]))
+                    stats.gpu_time_per_ray_median_us = (median_s / (gpu_rc.width * gpu_rc.height)) * 1e6
+                    stats.gpu_time_sample_count = int(gpu_res.get('sample_count', 1))
+                    stats.gpu_time_per_ray_us = float((gpu_res.get('render_time_s_mean', median_s) / (gpu_rc.width * gpu_rc.height)) * 1e6)
 
-                    # compute warp-divergence proxy on GPU iteration map (same proxy as CPU)
+                    # report ms/frame median (useful for real-time comparisons)
+                    stats.gpu_frame_ms_median = (stats.gpu_time_per_ray_median_us * gpu_rc.width * gpu_rc.height) / 1000.0
+
+                    # compute warp-divergence proxy on the median iteration map
+                    gpu_iters = pixels[..., 1] * mc.max_iterations
                     h, w = gpu_iters.shape
                     bx, by = 8, 4
                     stds = []
@@ -231,6 +245,7 @@ def cli(argv: Optional[list[str]] = None) -> int:
                     stats.gpu_time_per_ray_us = None
                     stats.gpu_time_per_ray_median_us = None
                     stats.gpu_time_sample_count = None
+                    stats.gpu_frame_ms_median = None
                     stats.gpu_warp_divergence_proxy = None
             except Exception:
                 # GPU unavailable or failed; mark fields as None and continue
