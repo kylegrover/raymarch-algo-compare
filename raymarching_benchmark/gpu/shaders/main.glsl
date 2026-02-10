@@ -25,7 +25,7 @@ void main() {
     else if (strategyId == 2) res = relaxed(ro, rd);
     else if (strategyId == 3) res = segment(ro, rd);
     else if (strategyId == 4) res = enhanced(ro, rd);
-    else if (strategyId == 5) res = ar_st(ro, rd);
+    else if (strategyId == 5) res = heuristic_auto_relaxed(ro, rd);
     else res = standard(ro, rd);
 
     // Encode result into texture

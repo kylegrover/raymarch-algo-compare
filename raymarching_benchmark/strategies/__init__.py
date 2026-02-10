@@ -3,8 +3,10 @@ from typing import Dict, Type, Optional
 from .base import MarchStrategy
 from .standard_sphere import StandardSphereTracing
 from .relaxed_sphere import RelaxedSphereTracing
-from .auto_relaxed import AutoRelaxedSphereTracing
+from .auto_relaxed import AutoRelaxedSphereTracing as HeuristicAutoRelaxedTracing
+from .slope_auto_relaxed import SlopeBasedAutoRelaxedTracing # New PDF Method
 from .enhanced_sphere import EnhancedSphereTracing
+from .curvature_auto_relaxed import CurvatureAwareTracing # New Novel Method
 from .overstep_bisect import OverstepBisectTracing
 from .adaptive_hybrid import AdaptiveHybridTracing
 from .segment_tracing import SegmentTracing
@@ -12,8 +14,10 @@ from .segment_tracing import SegmentTracing
 STRATEGIES: Dict[str, Type[MarchStrategy]] = {
     'Standard': StandardSphereTracing,
     'Relaxed': RelaxedSphereTracing,
-    'Auto-Relaxed': AutoRelaxedSphereTracing,
+    'Heuristic-Auto-Relaxed': HeuristicAutoRelaxedTracing, # Renamed
+    'Slope-Auto-Relaxed': SlopeBasedAutoRelaxedTracing,    # The one from the PDF
     'Enhanced': EnhancedSphereTracing,
+    'Curvature': CurvatureAwareTracing,
     'Overstep-Bisect': OverstepBisectTracing,
     'Adaptive-Hybrid': AdaptiveHybridTracing,
     'Segment': SegmentTracing,
