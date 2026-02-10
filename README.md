@@ -1,84 +1,129 @@
 # Ray Marching Algorithm Benchmark
 
-A modular framework for benchmarking and analyzing different ray marching strategies across a variety of SDF (Signed Distance Field) stress-test scenes.
+A modular framework for benchmarking raymarching strategies on a variety of SDF scenes.
 
-## Features
+### Strategies 
 
-- **7 Strategies**: Standard, Relaxed, Auto-Relaxed (AR-ST), Enhanced, Overstep-Bisect, Adaptive-Hybrid, and Segment Tracing.
-- **14 Test Scenes**: Covering smooth surfaces, sharp edges, thin features, grazing angles, fractals (Mandelbulb, Menger Sponge), and invalid Lipschitz bounds.
-- **Rich Metrics**: Iteration counts, hit rates, accuracy (SDF error), time per ray, and Warp Divergence (workload variance).
-- **Visualization**: Heatmaps (iteration, hit, depth), comparative bar charts, speed-vs-accuracy scatter plots, and side-by-side tiled comparisons.
-- **Comprehensive Reporting**: Automatically generates Markdown reports with embedded charts and tables, plus CSV data for external analysis.
+- Standard
+- Relaxed
+- Heuristic-Auto-Relaxed
+- Slope-Auto-Relaxed
+- Enhanced
+- Curvature-aware
+- Overstep-Bisect
+- Adaptive-Hybrid
+- Segment (Lipschitz-aware)
 
-## Quickstart
 
-Ensure you have `uv` installed.
+- **14 Test Scenes** covering smooth geometry, sharp edges, thin/tunneling features, grazing angles, fractals, and intentionally invalid Lipschitz bounds.
+- **Metrics**: iterations, hit rate, iteration distribution (p95/max), time-per-ray (CPU & optional GPU), and a warp-divergence proxy.
+- **Outputs**: per-run images, CSV matrices, and an aggregated `REPORT.md` with comparative charts.
 
-### 1. Install dependencies
-```bash
-uv sync
+
+## Requirements & quick install (Windows-friendly) ⚙️
+- Python: **3.9+** (see `pyproject.toml`).
+- Optional for GPU measurements: a working OpenGL driver and the `moderngl`/`glcontext` stack.
+
+Recommended (dev) setup:
+
+```powershell
+python -m venv .venv
+.\.venv\Scripts\activate
+pip install -e .[dev]
 ```
 
-### 2. Run a single benchmark
+If you prefer a minimal runtime install:
+
+```powershell
+pip install -r requirements.txt
+```
+
+Note: the project declares precise versions in `pyproject.toml` (use that for reproducible installs).
+
+---
+
+## Quickstart — run a benchmark ▶️
+(Primary workflow uses the `uv` task-runner; a Python fallback is provided below.)
+
+Run a single CPU benchmark (recommended — uv):
+
 ```bash
 uv run -m raymarching_benchmark --scene Sphere --strategy Standard --width 160 --height 120
 ```
 
-### 3. Run a comparative matrix
-Compare all strategies across all scenes:
+Run the full comparative matrix (uv — CPU + optional GPU validation):
+
 ```bash
 uv run -m raymarching_benchmark --scene all --strategy all --width 80 --height 60 --json summary.json
 ```
 
-### 4. View Results
-Results are saved in `results/` by default, including:
-- `REPORT.md`: A summary of the whole benchmark session.
-- `compare__<Scene>.png`: Side-by-side heatmaps for each scene.
-- `chart_iterations.png`: Performance bar chart.
-- `matrix_iteration_mean.csv`: Raw data matrix.
-- `stats.json`: Individual run stats.
+GPU-focused run (uv shortcut to 1080p):
 
-## Project Structure
-
-- `core/`: Fundamental math (Vec3), Ray, and Camera logic.
-- `scenes/`: SDF primitives, combinators, and the test scene catalog.
-- `strategies/`: Modular implementations of ray marching algorithms.
-- `metrics/`: Collection and statistical analysis components.
-- `visualization/`: Charting, heatmap generation, and report writers.
-
-## Development
-
-### Running Tests
 ```bash
-uv run python -m pytest tests/test_smoke.py
+uv run -m raymarching_benchmark --scene Sphere --strategy Standard --gpu-1080p --gpu-warmup 3 --gpu-repeats 7
 ```
 
-### Adding a new Strategy
-1. Create a new subclass of `MarchStrategy` in `strategies/`.
-2. Register it in `strategies/__init__.py`.
+Advanced / fallback — direct Python entrypoint (useful in CI or when `uv` is not available):
 
-### Adding a new Scene
-1. Create a new subclass of `SDFScene` in `scenes/catalog.py`.
-2. Add it to the `get_all_scenes()` list.
+```bash
+python -m raymarching_benchmark --scene Sphere --strategy Standard --width 160 --height 120
+```
 
-- Run the MVP (small, fast):
-  - uv run -m raymarching_benchmark --width 64 --height 48
+```bash
+python -m raymarching_benchmark --scene all --strategy all --width 80 --height 60 --json summary.json
+```
 
-- Inspect outputs:
-  - results/<Scene>__<Strategy>__<timestamp>/iterations.png
-  - results/<Scene>__<Strategy>__<timestamp>/inv_depth.png
-  - results/<Scene>__<Strategy>__<timestamp>/depth_map.npy
+---
 
-Goals
+## Where outputs go & how to inspect results 📁
+- Default output folder: `results/`.
+- Per-run outputs: `results/<Scene>__<Strategy>__<timestamp>/` (contains `iterations.png`, `inv_depth.png`, `hit_map.png`, `depth_map.npy`, `stats.json`).
+- Aggregate outputs (comparisons & matrices): `results/REPORT.md`, `matrix_iteration_mean.csv`, `matrix_time_per_ray_us.csv`, `matrix_hit_rate.csv`, etc.
 
-- Provide a compact, testable baseline to benchmark and compare ray-marching strategies.
-- Iterate on strategies and metrics without needing GPU or complex setup.
+---
 
-Development notes
+## GPU notes 🖥️
+- GPU timing is **best-effort**: runner attempts a GPU validation for each scene/strategy and will gracefully fall back to CPU-only if OpenGL/context creation or shaders fail.
+- Flags: `--gpu-width`, `--gpu-height`, `--gpu-1080p`, `--gpu-warmup`, `--gpu-repeats`.
+- Requirements: up-to-date GPU drivers and an OpenGL-compatible environment. If you see OpenGL/context errors, try running the CPU path (no extra action needed).
 
-- Use `uv run -m raymarching_benchmark --width 16 --height 12` for very fast feedback.
-- Tests: `pytest -q` (optional; MVP focuses on runnable baseline).
+---
 
-Contributing
+## Development & tests 🔧
+Run the fast smoke/test suite locally:
 
-Open a PR with focused changes and include a short reproducer (command and expected output).
+```bash
+# recommended
+uv run -m pytest -q
+# or single test
+uv run -m pytest tests/test_smoke.py -q
+```
+
+For very fast iteration during development:
+
+```bash
+uv run -m raymarching_benchmark --width 16 --height 12
+```
+
+---
+
+## Project layout (key modules) 🔎
+- `raymarching_benchmark/core/` — math primitives, `Vec3`, `Ray`, `Camera`.
+- `raymarching_benchmark/scenes/` — scene catalog and SDF primitives.
+- `raymarching_benchmark/strategies/` — strategy implementations and registry (`list_strategies()`).
+- `raymarching_benchmark/metrics/` — collectors and analyzers.
+- `raymarching_benchmark/visualization/` — charts, heatmaps, and report writers.
+
+---
+
+## Adding content (quick checklist)
+- Add a Strategy: implement `MarchStrategy` in `strategies/` and register it in `strategies/__init__.py` (add a readable key to `STRATEGIES`).
+- Add a Scene: add an `SDFScene` subclass to `scenes/catalog.py` and include it in `get_all_scenes()`.
+- Add tests: include a focused unit/integration test under `tests/` that reproduces the behavior.
+
+---
+
+## Troubleshooting & tips
+- If the GPU run fails: confirm drivers and try `--no-save-images` (helps when headless). The runner will not abort the whole run for GPU failures.
+- If you get unexpected iteration counts: try lowering `--width/--height` and compare heatmaps in `results/`.
+- Use `--json summary.json` to produce a compact machine-readable summary for CI.
