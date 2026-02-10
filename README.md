@@ -51,16 +51,16 @@ Run a single CPU benchmark (recommended — uv):
 uv run -m raymarching_benchmark --scene Sphere --strategy Standard --width 160 --height 120
 ```
 
-Run the full comparative matrix (uv — CPU + optional GPU validation):
+Run the full comparative matrix (uv — CPU + 1080p GPU):
 
 ```bash
-uv run -m raymarching_benchmark --scene all --strategy all --width 80 --height 60 --json summary.json
+uv run -m raymarching_benchmark --scene all --strategy all --width 192 --height 108  --gpu-1080p
 ```
 
-GPU-focused run (uv shortcut to 1080p):
+Output summary JSON:
 
 ```bash
-uv run -m raymarching_benchmark --scene Sphere --strategy Standard --gpu-1080p --gpu-warmup 3 --gpu-repeats 7
+uv run -m raymarching_benchmark --scene Sphere --strategy Standard --json summary.json
 ```
 
 Advanced / fallback — direct Python entrypoint (useful in CI or when `uv` is not available):

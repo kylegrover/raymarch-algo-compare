@@ -149,8 +149,8 @@ def cli(argv: Optional[list[str]] = None) -> int:
     p.add_argument("--gpu-width", type=int, default=None, help="GPU render width (overrides CPU width)")
     p.add_argument("--gpu-height", type=int, default=None, help="GPU render height (overrides CPU height)")
     p.add_argument("--gpu-1080p", action='store_true', help="Shortcut: run GPU measurements at 1920x1080")
-    p.add_argument("--gpu-warmup", type=int, default=3, help="Number of warmup GPU frames to discard")
-    p.add_argument("--gpu-repeats", type=int, default=7, help="Number of GPU timed repeats (median reported)")
+    p.add_argument("--gpu-warmup", type=int, default=5, help="Number of warmup GPU frames to discard")
+    p.add_argument("--gpu-repeats", type=int, default=10, help="Number of GPU timed repeats (median reported)")
     p.add_argument("--hybrid-fallback-iter", type=int, default=None, help="(experimental) Hybrid: fallback to Segment after N iterations")
     p.add_argument("--scene", type=str, default="Sphere",
                    help="Scene name (comma-separated, or 'all')")
