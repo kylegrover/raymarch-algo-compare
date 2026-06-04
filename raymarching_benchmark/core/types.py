@@ -29,6 +29,9 @@ class RayMarchStats:
     hit_count: int = 0
     miss_count: int = 0
 
+    # Total raymarch samples (SDF evaluations) across all rays this pass
+    sample_count: int = 0
+
     # Iteration statistics
     iteration_counts: List[int] = field(default_factory=list)
     iteration_mean: float = 0.0
@@ -98,6 +101,9 @@ class RayMarchStats:
 
         self.iteration_counts = iterations
         iter_arr = np.array(iterations, dtype=np.float64)
+
+        # Total raymarch samples = sum of per-ray iteration counts
+        self.sample_count = int(iter_arr.sum())
 
         self.iteration_mean = float(np.mean(iter_arr))
         self.iteration_median = float(np.median(iter_arr))

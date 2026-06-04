@@ -9,3 +9,12 @@ raymarching_benchmark.egg-info/
 results/
 *.png
 *.npy
+
+# generated analysis artifacts (regenerable from the sweep engine)
+# ground-truth + method captures (.npz / meta.json)
+references/
+# sweep dataset (machine-specific provenance)
+sweep.jsonl
+# generated comparison / analysis reports
+*.html
+.pytest_cache/

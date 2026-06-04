@@ -51,3 +51,23 @@ def test_consistency():
     
     # Hit counts should be identical for a clean sphere
     assert s1.hit_count == s2.hit_count, "Strategies disagree on hit count for simple sphere"
+
+
+def test_skipping_spheres_grazing_plane():
+    """Ensure Skipping-Spheres catches thin/grazing features."""
+    rc = RenderConfig(width=48, height=36)
+    mc = MarchConfig(max_iterations=200)
+
+    stats = run_once(render=rc, march=mc, scene_name="Grazing_Plane", strategy_name="Skipping-Spheres")
+    assert stats.hit_count > 0, "Skipping-Spheres failed to detect grazing feature"
+
+
+def test_revaa_on_bad_lipschitz():
+    """Basic smoke check: RevAA runs on the pathological scene without crashing and produces results."""
+    rc = RenderConfig(width=40, height=30)
+    mc = MarchConfig(max_iterations=200)
+
+    stats = run_once(render=rc, march=mc, scene_name="Bad_Lipschitz_Sphere", strategy_name="RevAA")
+    assert stats.sample_count > 0
+    assert stats.iteration_max <= mc.max_iterations
+

@@ -10,6 +10,8 @@ from .curvature_auto_relaxed import CurvatureAwareTracing # New Novel Method
 from .overstep_bisect import OverstepBisectTracing
 from .adaptive_hybrid import AdaptiveHybridTracing
 from .segment_tracing import SegmentTracing
+from .skipping_spheres import SkippingSpheresTracing
+from .rev_affine import RevAAApproxTracing
 
 STRATEGIES: Dict[str, Type[MarchStrategy]] = {
     'Standard': StandardSphereTracing,
@@ -19,6 +21,8 @@ STRATEGIES: Dict[str, Type[MarchStrategy]] = {
     'Enhanced': EnhancedSphereTracing,
     'Curvature': CurvatureAwareTracing,
     'Overstep-Bisect': OverstepBisectTracing,
+    'Skipping-Spheres': SkippingSpheresTracing,
+    'RevAA': RevAAApproxTracing,
     'Adaptive-Hybrid': AdaptiveHybridTracing,
     'Segment': SegmentTracing,
 }
@@ -53,6 +57,8 @@ __all__ = [
     'AutoRelaxedSphereTracing',
     'EnhancedSphereTracing',
     'OverstepBisectTracing',
+    'SkippingSpheresTracing',
+    'RevAAApproxTracing',
     'AdaptiveHybridTracing',
     'SegmentTracing',
     'get_strategy_by_name',
