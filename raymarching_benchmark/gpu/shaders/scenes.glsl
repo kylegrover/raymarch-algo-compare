@@ -3,7 +3,15 @@
 
 uniform int sceneId;
 
-float map(vec3 p) {
+// Per-invocation SDF-evaluation counter. Every strategy (and calcNormal) calls
+// map(), so this counts true work. main() resets it before the march and
+// snapshots it afterwards, giving an "equal compute" denominator that is fairer
+// than step count (one step can cost several map() calls).
+int g_evals = 0;
+float map_impl(vec3 p);
+float map(vec3 p) { g_evals += 1; return map_impl(p); }
+
+float map_impl(vec3 p) {
     if (sceneId == 0) { // Sphere
         return sdSphere(p, 1.0);
     }

@@ -1,9 +1,20 @@
 """Console + file tables for benchmark results (lightweight, human-readable)."""
 
 import os
+import sys
 from typing import List, Dict, Optional
 from ..metrics.analyzer import MetricsAnalyzer, ComparisonResult
 from ..core.types import RayMarchStats
+
+
+def _safe_print(text: str) -> None:
+    """Print without dying on legacy consoles (e.g. Windows cp1252) when the
+    text contains glyphs the console codepage can't encode."""
+    try:
+        print(text)
+    except UnicodeEncodeError:
+        enc = (getattr(sys.stdout, "encoding", None) or "utf-8")
+        sys.stdout.buffer.write((text + "\n").encode(enc, errors="replace"))
 
 
 def _emit_lines(lines: List[str], out_path: Optional[str] = None) -> None:
@@ -13,7 +24,7 @@ def _emit_lines(lines: List[str], out_path: Optional[str] = None) -> None:
             f.write('\n'.join(lines) + '\n')
 
     for L in lines:
-        print(L)
+        _safe_print(L)
 
 
 def print_comparison_tables(analyzer: MetricsAnalyzer, output_dir: Optional[str] = None):

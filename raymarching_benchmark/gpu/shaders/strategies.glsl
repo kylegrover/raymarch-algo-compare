@@ -392,3 +392,101 @@ MarchResult segment(vec3 ro, vec3 rd) {
 
     return MarchResult(false, t, it, d);
 }
+
+// ============================================================================
+// 9. SDF Scaling / Skipping Spheres (Coarse-to-Fine approximation)
+// ============================================================================
+MarchResult skipping_spheres(vec3 ro, vec3 rd) {
+    float t = 0.0;
+    int it = 0;
+    float margin = 0.05; // SDF Scaling margin to ensure thin features are caught
+    float d = 0.0;
+
+    // Split the SHARED iteration budget so this method gets the same total
+    // chances to converge as every other strategy (~2/3 coarse, 1/3 fine).
+    int coarse_budget = (maxIterations * 2) / 3;
+    int fine_budget = maxIterations - coarse_budget;
+
+    // Pass 1: Coarse march with "scaled" (fattened) SDF
+    for (int i = 0; i < coarse_budget; ++i) {
+        it = it + 1;
+        d = map(ro + rd * t) - margin; // enlarge the surface
+        if (d < hitThreshold) break;
+        t += d;
+        if (t > maxDistance) break;
+    }
+
+    // Pass 2: Fine refinement with real SDF
+    for (int i = 0; i < fine_budget; ++i) {
+        it = it + 1;
+        d = map(ro + rd * t);
+        if (abs(d) < hitThreshold) return MarchResult(true, t, it, d);
+        if (d < 0.0) { t = max(0.0, t + d); continue; }
+        t += d;
+        if (t > maxDistance) break;
+    }
+
+    return MarchResult(false, t, it, d);
+}
+
+// ============================================================================
+// 10. RevAA (approx.) — Interval Arithmetic approximation of Revised Affine
+// ============================================================================
+
+struct Interval { float lo; float hi; };
+
+Interval i_add(Interval a, Interval b) { return Interval(a.lo + b.lo, a.hi + b.hi); }
+
+bool reliable_hit(Interval range) {
+    // conservative: interval spans zero -> possible root
+    return (range.lo <= 0.0 && range.hi >= 0.0);
+}
+
+// A very small interval-based march: sample endpoints of a segment and
+// bisection if the interval indicates a possible crossing.
+MarchResult rev_affine(vec3 ro, vec3 rd) {
+    float t = 0.0;
+    int it = 0;
+    float d = 0.0;
+
+    for (int i = 0; i < maxIterations; ++i) {
+        it = i + 1;
+        d = map(ro + rd * t);
+        if (abs(d) < hitThreshold) return MarchResult(true, t, it, d);
+
+        // if negative, back up conservatively
+        if (d < 0.0) { t = max(0.0, t + d); continue; }
+
+        float next_t = t + max(d, hitThreshold);
+        // approximate SDF range over [t, next_t] by sampling endpoints
+        float d_lo = map(ro + rd * t);
+        float d_hi = map(ro + rd * next_t);
+        Interval dr = Interval(min(d_lo, d_hi), max(d_lo, d_hi));
+
+        if (reliable_hit(dr)) {
+            // possible root inside segment — bisect to refine
+            float a = t;
+            float b = next_t;
+            for (int j = 0; j < 8; ++j) {
+                float mid = 0.5 * (a + b);
+                float dm = map(ro + rd * mid);
+                it = it + 1;
+                if (abs(dm) < hitThreshold) return MarchResult(true, mid, it, dm);
+                if (dm > 0.0) a = mid; else b = mid;
+            }
+            float tm = 0.5 * (a + b);
+            return MarchResult(true, tm, it + 1, map(ro + rd * tm));
+        }
+
+        t = next_t;
+        if (t > maxDistance) break;
+    }
+    return MarchResult(false, t, it, d);
+}
+
+
+/*
+
+IMPORT THIS NEXT: https://www.shadertoy.com/view/7XXSzr
+
+*/
