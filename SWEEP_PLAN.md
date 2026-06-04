@@ -1,187 +1,227 @@
-# Sweep Engine Plan — "Churn for hours → analyzable dataset"
+# Sweep Engine Plan — v2 (post external review)
 
-> Created 2026-06-04. Supersedes `PLAN.md` (which documents the now-complete
-> CPU/GPU benchmark foundation — Phases 1–5 there are done).
+> v1 built the capture → score → sweep → report pipeline (done, see "Status").
+> v2 integrates two independent expert reviews. Their critiques converged on the
+> same load-bearing issues — the **oracle**, the **fairness axis**, and the
+> **silhouette/accuracy measure** — and those drive most of the changes below.
 
-## Goal
+## Goal (unchanged)
 
-Let the GPU run unattended for hours over a large grid of
-`scene × strategy × parameters × resolution`, scoring every run against a
-ground-truth reference, and append results to a durable dataset we can later
-analyze to answer: **which technique+settings win on which type of scene, at
-what accuracy cost.**
-
-## Decisions locked in
-
-- **Ground truth:** high-budget reference march (Standard tracing at very high
-  `max_iterations` + tiny `hit_threshold`), per scene+camera+resolution, cached.
-- **Dataset format:** append-only **JSONL**, one line per run.
-- **Engine:** GPU-primary. CPU march becomes optional spot-check, not per-combo.
-
-## The reframe
-
-Today we have a benchmark *reporter* (fixed config → human-readable tables).
-We need an experiment *engine* + *dataset*. The 6 gaps below are what separate
-the two. Phase 1 makes "best" meaningful; Phase 2 makes it scale; Phase 3 is the
-payoff.
+Run a large grid of `scene × viewpoint × strategy × parameters × budget` on the
+GPU for hours, score every run against a trustworthy ground truth, and append to
+a durable dataset that answers **which technique + settings win on which kind of
+scene, at what cost** — and ultimately *why*, in terms of cheap scene features.
 
 ---
 
-## Current state (what's already built)
+## Status — what v1 already delivers
 
-- Dual CPU (`metrics/`) + GPU (`gpu/runner.py`, moderngl headless) backends with
-  Python/GLSL strategy parity (11 strategies, dispatched by id).
-- 14 scenes with `category()`, `suggested_camera()`, `known_lipschitz_bound()`.
-- Per-run telemetry: iteration distribution, hit rate, warp-divergence proxy,
-  GPU median timing, per-pixel iteration/depth/hit maps.
-- Reporting: CSV matrices, markdown, charts.
+- GPU multi-target capture (depth / normal / lit color / hit) + per-invocation
+  **SDF-evaluation counting**.
+- Ground-truth + scoring (depth error, hit IoU/false-hit-miss, normal angle,
+  SSIM on depth/normal/color).
+- Resumable, provenance-stamped **JSONL sweep** over scene × strategy × budget.
+- Two report views (image gallery; accuracy-vs-cost curves + runtime-matched
+  winners).
+- Fairness fix: every strategy honors the shared iteration budget.
 
-### The 6 gaps
-
-1. **No sweep engine** — `main.py:203` loops `scene × strategy` only; every
-   `MarchConfig` knob is a single fixed value per invocation.
-2. **Params can't reach the GPU** — `omega`/`kappa` hardcoded in
-   `runner.py:97-100`; skipping-spheres `margin` hardcoded in GLSL. Sweeping a
-   parameter currently can't affect the GPU path.
-3. **No ground-truth oracle** — strategies self-report hits, so "best" can
-   reward fast-but-wrong algorithms (cf. Skipping-Spheres 0.115 vs 0.458 hit
-   rate on Grazing Plane; RevAA ≡ Standard on Bad Lipschitz).
-4. **No durable dataset** — results are in-memory per invocation, then rendered
-   to reports. No append-only table, no provenance.
-5. **No resumability** — a multi-hour run can't skip completed combos or survive
-   a crash (and `main.py` already dies on the cp1252 console bug mid-run).
-6. **CPU is the wrong primary engine** — CPU per-pixel Python march dominates the
-   hours; GPU is only a validation sidecar (`main.py:209`).
+v1's verdicts are **not yet trustworthy** — the reviews explain why, below.
 
 ---
 
-## Phase 0 — Robustness prerequisites (small, unblock everything)
+## Reviewer-driven course corrections
 
-- **0.1 Fix the cp1252 crash.** Make `visualization/tables.py` output
-  encoding-safe (reconfigure stdout to utf-8 at entry, or ASCII-only table
-  glyphs). A sweep can't run for hours if printing kills it.
-- **0.2 GPU timing rigor (optional but cheap).** Consider `GL_TIMESTAMP` query
-  objects instead of `perf_counter` + `ctx.finish()` to exclude dispatch/sync
-  overhead. Keep median-over-repeats.
+### A. The oracle (the #1 threat)
 
-## Phase 1 — Make "best" meaningful (ground truth + scored dataset)
+Both reviewers independently flagged that a high-budget *same-renderer* reference
+is circular **in a direction correlated with our hard cases**: plain sphere
+tracing undershoots at grazing/thin features and can confidently converge to the
+*wrong* surface on non-metric (L>1) SDFs — exactly the scenes whose verdicts we
+care about. Plan:
 
-Deliver value even with today's small loop.
+1. **Interim oracle = understepped sphere trace.** Standard trace with the step
+   multiplied by a fudge factor (~0.6) and a very high max-step count. Smaller
+   steps actually *reach* grazing/thin surfaces instead of stalling short, and
+   the 0.6 margin tolerates Lipschitz violations up to ~1/0.6 ≈ 1.67× without
+   overshooting. Cheap, strictly better than v1's reference.
+2. **Analytic calibration (nearly free).** For scenes with closed-form ray-surface
+   depth (sphere, plane, cube, thin torus, CSG of primitives), render analytic
+   depth and report the **oracle-minus-analytic residual**. This converts the
+   oracle's bias from an unverifiable assumption into a measured error bar — the
+   thing both reviewers said they need before trusting fractal verdicts.
+3. **Interval-arithmetic root-finder (later, gold standard).** Evaluate the SDF
+   over a bounding interval/box along the ray; `d_min>0` ⇒ provably empty, step
+   on; `d_min≤0≤d_max` ⇒ bisect. Immune to Lipschitz violations and thin-feature
+   skipping; guarantees the first intersection. Slow but offline. Build after the
+   interim oracle; **compare the three references** on the scenes where all are
+   available to bound interim-oracle error on the rest.
 
-- **1.1 `gpu/groundtruth.py` — reference oracle.**
-  - `reference_maps(scene_name, camera, resolution) -> {depth_map, hit_map}`.
-  - Renders Standard (id 0) at `max_iterations ≈ 4096`, `hit_threshold ≈ 1e-6`,
-    large `max_distance`, via the existing GPURunner.
-  - Cache to disk as `.npy` keyed by a hash of (scene, camera, resolution,
-    reference-config). Compute once per scene/resolution, reuse across all runs.
-- **1.2 `metrics/scoring.py` — accuracy vs reference.**
-  Given a run's `depth_map`/`hit_map` and the reference, compute:
-  - `false_hit_rate` (run hit where reference miss),
-  - `false_miss_rate` (run miss where reference hit),
-  - `depth_rmse` / `depth_p95_err` over pixels both agree are hits,
-  - `silhouette_err` (disagreement concentrated near edges — optional).
-  These are the columns that let "fast" be weighed against "correct."
-- **1.3 `data/dataset.py` — JSONL writer + run schema.**
-  One line per run (see schema below). Append-only, flushed after each row.
-- **1.4 `data/provenance.py`** — capture git SHA, dirty flag, GPU
-  renderer/vendor string (from moderngl `ctx.info`), driver, hostname, UTC
-  timestamp, python/moderngl versions, and a `config_hash` (stable hash of the
-  full param set) used both as row id and for resume.
+> Note: supersampling does *not* fix oracle bias (same algorithm, same biased
+> limit, higher resolution) — use it only for anti-aliasing, not trust.
 
-## Phase 2 — Scale it (sweep engine + GPU param threading + resumable runner)
+### B. Matched-residual as the primary experimental driver
 
-- **2.1 Un-hardcode GLSL params → uniforms.** Promote `omega`, `kappa`,
-  `margin` (skipping-spheres), `initial_relaxation`, `min_step_fraction`, etc.
-  to uniforms in the relevant GLSL functions, with current values as defaults.
-- **2.2 Extend `GPURunner.render` to accept a `params: dict`** and set those
-  uniforms, so any swept parameter actually reaches the shader.
-- **2.3 Sweep spec.** A YAML/py file describing the grid, e.g.:
-  ```yaml
-  scenes: all            # or [Sphere, Grazing Plane, ...]
-  strategies: all        # or [Standard, Segment, ...]
-  resolutions: [[1920,1080]]
-  repeats: 7
-  param_grid:            # cartesian product, per-strategy overrides allowed
-    hit_threshold: [1e-3, 1e-4]
-    max_iterations: [256, 512]
-    Segment: { kappa: [1.5, 2.0, 3.0] }
-    Relaxed: { omega: [1.2, 1.6, 1.9] }
-    Skipping-Spheres: { margin: [0.02, 0.05, 0.1] }
-  ```
-- **2.4 `sweep.py` — the engine.**
-  - Expand spec → list of run configs (cartesian product, with per-strategy
-    param subsets so we don't test `kappa` on Standard).
-  - **GPU-primary:** measure timing + iteration/depth/hit maps on GPU; score
-    against cached reference; write JSONL row.
-  - **Resumable:** on start, read existing JSONL, collect completed
-    `config_hash`es, skip them.
-  - **Crash-tolerant:** wrap each run in try/except; on failure write a row with
-    `status: "error"` + message and continue.
-  - **Progress/ETA:** count done/total, running rate, est. completion.
-  - CPU march only when `--validate-cpu` sampling flag is set (e.g. 1 in N).
+"Equal iterations" is unfair (a step buys 1.0–2.9 evaluations); "equal
+evaluations" still entangles *how efficiently* a method converges with *how far*
+it got. Both reviewers: **march every method to the same closeness-to-surface ε,
+sweep ε, and report what reaching it cost.** Accuracy is (approximately) held
+constant by ε; cost becomes the dependent variable — "what does equal accuracy
+cost," the question a practitioner actually has.
 
-## Phase 3 — The payoff (analysis layer)
+- Replace the iteration-budget sweep with a **target-residual sweep** (ε), with a
+  hard max-budget cap for methods that can't reach ε on pathological scenes
+  (record "did not converge").
+- Keep iteration count as **diagnostic**, not the comparison axis.
 
-- **3.1 `analyze.py` / notebook.** Load JSONL → pandas/Polars.
-- **3.2 Per scene-category winners.** Group by `scene.category`; rank strategies
-  by a chosen objective (e.g. GPU time at accuracy ≤ ε).
-- **3.3 Speed/accuracy Pareto front** per scene or category — the headline
-  artifact: who is on the frontier, who is dominated.
-- **3.4 Parameter sensitivity** — for each strategy, how its winning params
-  shift across scene types.
+### C. Tripartite cost reporting (with proper GPU timing)
+
+Report all three, never collapse to one:
+
+1. **Workload** — SDF evaluations / ray (hardware-agnostic). Caveat: an
+   evaluation is *not* constant-cost for segment/interval methods (interval/
+   Lipschitz-bound evals cost more per call), so eval-count under-charges them —
+   which is why we always report wall-clock alongside.
+2. **Hardware cost** — wall-clock via **GPU timer queries** (`GL_TIME_ELAPSED`
+   around the dispatch), replacing CPU wall-clock + `finish()` (which folds in
+   dispatch/readback/scheduler jitter that swamps small budgets). moderngl/OpenGL
+   exposes this; **no engine switch needed.**
+3. **Efficiency** — warp divergence (we proxy it via neighborhood iteration
+   variance) and, where the toolchain exposes them, occupancy / register
+   pressure. Divergence is a *first-class result* here: adaptive methods that win
+   on eval-count can lose on-GPU because neighboring pixels take wildly different
+   paths.
+
+### D. Accuracy metrics — IoU-primary + FLIP, SSIM demoted
+
+Whole-image SSIM is dominated by the large smooth regions everyone gets right and
+dilutes the silhouette/thin-feature errors that matter. Decision:
+
+- **Hit-mask IoU = primary objective geometric metric.** A skipped thin feature
+  tanks IoU with no arbitrary weighting — un-confounded.
+- **FLIP (NVIDIA, peer-reviewed perceptual) = primary perceptual metric.** It
+  inherently penalizes high-contrast edge failures (ragged silhouettes) more than
+  flat-surface shading variance — rigorous, not a hand-rolled weighting.
+- **SSIM (depth/normal/color) demoted to secondary descriptive.**
+- Objective silhouette-band geometric errors (errors restricted to the reference's
+  depth-discontinuity band) kept as an *optional* later add — objective because
+  the mask comes from ground truth, but deferred to avoid metric sprawl.
+
+### E. Curated multi-viewpoint (no animation)
+
+A single hand-framed camera is a cherry-picking risk, and grazing behavior is
+extremely viewpoint-sensitive. Use **hand-curated canonical viewpoints per
+scene**, explicitly categorized:
+
+- Orthogonal / flat (easy), Grazing (high step counts),
+  Macro / close-up (thin-feature resolution), Interior / claustrophobic (high
+  bounding-volume overlap).
+
+A high-quality reference is rendered **per viewpoint**. Animation/temporal
+coherence is deferred (separate confound, only relevant if benchmarking TAA).
+
+### F. Full parameter grid → derive best-shot *and* sensitivity
+
+Compute is not the bottleneck (≈0.2 s/run ⇒ a ~10⁵–10⁶ grid is an overnight/
+weekend run on the 3090). Decision: **brute-force the parameter grid** and from
+the one dataset extract (a) each method's best-tuned params per scene — its "fair
+shot," (b) its parameter sensitivity/robustness, and (c) feature correlations for
+the discovery goal. Prerequisite: **thread tuning params as shader uniforms**
+(un-hardcode ω, segment growth, fattening margin in the runner/GLSL).
+
+### G. Instrument for *discovery* now
+
+The durable contribution is characterizing **why** a method wins, in terms of
+cheap scene/ray features, so the result survives the next new method. Compute and
+**store per-run features now** (while iterating, to avoid re-running the grid):
+local Lipschitz estimate, grazing-angle fraction, thin-feature density,
+hit-complexity / silhouette length, iteration-count variance. Analysis target:
+"does a small feature set predict the Pareto-optimal method?" → selection
+criteria, then (second paper) an auto-tuning / scene-adaptive hybrid.
+
+### H. Scale hygiene
+
+At grid scale the bottlenecks are disk I/O and CPU-side scoring, not GPU:
+
+- **Split cheap cost-runs (timer + eval count only) from scored runs (capture +
+  IoU/FLIP).** Don't pay image scoring on every cell.
+- **Persist images only for the Pareto frontier**, not every run.
+- Batch JSONL writes.
+
+### I. Correctness: fix mislabeled strategies (Reviewer 1's catch — confirmed)
+
+Our `relaxed` and `heuristic_auto_relaxed` use **naive** over-relaxation:
+`t += d·ω` with *post-hoc* overshoot detection (`if d<0 back up`). That check
+cannot fire when a step tunnels cleanly through a thin shell, which is why they
+"skip thin geometry." This is **not** Keinert et al. 2014 safe over-relaxation,
+whose defining feature is a *predictive* disjoint-sphere fallback that refuses the
+over-step before taking it. Actions:
+
+- Implement **safe over-relaxation (Keinert)** with the predictive overlap test.
+- Relabel the current ones honestly (e.g. "Naive-Over-Relaxed") so strategy names
+  mean what the field expects.
+- Re-examine the "over-relaxation skips thin geometry" finding under the safe
+  variant.
 
 ---
 
-## JSONL row schema (draft)
+## Re-examine v1's "findings" after the fixes
 
-```json
-{
-  "config_hash": "ab12…",
-  "status": "ok",
-  "provenance": {
-    "git_sha": "dbe6788", "git_dirty": true,
-    "gpu": "NVIDIA …", "driver": "…", "host": "…",
-    "timestamp_utc": "2026-06-04T…", "moderngl": "5.x"
-  },
-  "config": {
-    "scene": "Grazing Plane", "scene_category": "stress_grazing",
-    "strategy": "Segment", "backend": "gpu",
-    "resolution": [1920, 1080], "repeats": 7,
-    "params": { "max_iterations": 512, "hit_threshold": 1e-4, "kappa": 2.0 }
-  },
-  "perf": {
-    "gpu_ms_median": 4.2, "gpu_ms_p95": 4.9,
-    "iter_mean": 11.6, "iter_p95": 20, "iter_max": 48,
-    "warp_divergence": 1.81, "sample_count": 35712000
-  },
-  "accuracy": {
-    "false_hit_rate": 0.001, "false_miss_rate": 0.34,
-    "depth_rmse": 0.012, "depth_p95_err": 0.04, "hit_rate": 0.115
-  }
-}
-```
+Reviewer 1's disambiguations — treat current v1 signals as *suspect* until
+re-run against the improved oracle + matched-residual + safe variants:
+
+- **"Interval method ≡ baseline":** indistinguishable on *which* axis? If on
+  accuracy *and* eval-count → it never takes aggressive steps (a bug). If it
+  matches accuracy at *lower* cost → a quiet win. Separate before calling it null.
+- **"Best strategy changes with budget":** real Pareto crossover, or the
+  conservative method converging to the same biased reference the oracle used?
+  Disambiguate on analytic scenes.
+- **"Over-relaxation skips thin geometry":** per §I, currently a property of our
+  *naive* implementation, not of safe AR-ST.
 
 ---
 
-## Suggested file layout (new)
+## Revised phased roadmap
 
-```
-raymarching_benchmark/
-├── sweep.py                 # Phase 2 — engine entrypoint (CLI: --spec sweep.yaml)
-├── gpu/groundtruth.py       # Phase 1 — reference maps + disk cache
-├── metrics/scoring.py       # Phase 1 — accuracy vs reference
-├── data/
-│   ├── dataset.py           # Phase 1 — JSONL writer + schema
-│   └── provenance.py        # Phase 1 — git/gpu/host/config_hash
-└── analyze.py               # Phase 3 — load JSONL → pareto / winners
-sweeps/
-└── example.yaml             # a sample sweep spec
-```
+**Phase 3 — Trustworthy oracle + metrics**
+3.1 Understepped (×0.6, high-budget) reference, replacing v1's reference.
+3.2 Analytic depth for closed-form scenes; oracle-residual calibration report.
+3.3 Accuracy: IoU primary, FLIP, SSIM secondary.
+3.4 Safe over-relaxation (Keinert) + relabel; re-examine suspect findings.
 
-## Build order (dependency-correct)
+**Phase 4 — Fair cost + matched residual**
+4.1 GPU timer queries; keep eval count; add divergence/occupancy where available.
+4.2 Matched-residual driver (sweep ε, budget cap, "did-not-converge" flag).
+4.3 Eval-cost caveat for interval/segment methods.
 
-0.1 → 1.4 (provenance/hash) → 1.3 (JSONL) → 1.1 (ground truth) → 1.2 (scoring)
-→ 2.1/2.2 (GPU params) → 2.3/2.4 (spec + engine) → 3.x (analysis).
+**Phase 5 — Parameterization, viewpoints, scale**
+5.1 Thread tuning params as uniforms (un-hardcode ω / growth / margin).
+5.2 Curated multi-viewpoint categories + per-view references; add more scenes.
+5.3 Full parameter grid; cheap-vs-scored run split; Pareto-only image persistence;
+    batched writes.
 
-Phase 1 alone, run over the existing small grid, already produces a *scored*
-dataset — the first time "best" means "fast **and** correct."
+**Phase 6 — Discovery**
+6.1 Per-run scene/ray feature extraction + storage.
+6.2 Analysis: feature → Pareto-optimal-method characterization; selection criteria.
+6.3 Interval-arithmetic gold-standard reference; cross-validate oracle; (later)
+    auto-tuning hybrid prototype.
+
+---
+
+## Validation gates (must answer before trusting any number)
+
+1. On analytic scenes, what is the understep-oracle's residual vs closed-form
+   depth? (Bounds oracle bias.)
+2. Which over-relaxation is each labeled strategy actually running? (Safe vs
+   naive — they mean opposite things.)
+3. The "interval ≡ baseline" null — on which axis, and is it a bug or a quiet win?
+4. Is each budget crossover a real Pareto effect or an oracle-bias artifact?
+   (Check on analytic scenes.)
+
+---
+
+## Scale sanity (for the overnight grid)
+
+≈0.2 s/run pilot rate ⇒ e.g. 14 scenes × 5 views × 8 strategies × 10 residual
+steps × 100 param combos ≈ 5.6×10⁵ runs ≈ ~31 h — a feasible weekend run on one
+3090. Therefore the engineering effort goes into I/O batching, Pareto-only image
+persistence, and the cheap-vs-scored run split, **not** into shrinking the grid.
