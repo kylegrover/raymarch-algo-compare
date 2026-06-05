@@ -14,6 +14,9 @@ from PIL import Image
 
 
 def _to_u8(x: np.ndarray) -> np.ndarray:
+    # nan_to_num first: a NaN/inf (e.g. a degenerate normal or an all-miss frame)
+    # otherwise casts to garbage and warns "invalid value encountered in cast".
+    x = np.nan_to_num(x, nan=0.0, posinf=1.0, neginf=0.0)
     return np.clip(x * 255.0, 0, 255).astype(np.uint8)
 
 

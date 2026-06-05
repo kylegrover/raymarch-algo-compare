@@ -227,11 +227,25 @@ re-run against the improved oracle + matched-residual + safe variants:
     JSONL writes (`--flush-every`, `JsonlDataset.extend`). Per-run images: N/A — the
     sweep is JSONL-only, so "Pareto-only persistence" is already satisfied.
 
-**Phase 6 — Discovery**
-6.1 Per-run scene/ray feature extraction + storage.
+**First full grid run — DONE (N=3864, see FINDINGS.md)**
+3864 scored runs (14 scene-views × 9 strategies × params × budget+residual), 0
+errors, scored vs the dense-march oracle; `report/analyze.py` distils it. Headlines:
+plain Standard is the hard-to-beat baseline (never structurally limited); Safe-
+Relaxed is the only *advanced* method that's both robust (ω-insensitive) and
+competitive; Naive over-relaxation is fragile (tunnels thin/sharp); **Segment is
+broken off the plane** (Thin-Torus IoU 0.003); eval-count ≠ ms (Enhanced); the
+**Mandelbulb is where the oracle's own trust runs out** (no method > ~0.98).
+
+**Phase 6 — Discovery** (priorities sharpened by the grid)
+6.1 Per-run scene/ray feature extraction + storage (local Lipschitz est, grazing
+    fraction, thin-feature density, iteration variance).
 6.2 Analysis: feature → Pareto-optimal-method characterization; selection criteria.
-6.3 Interval-arithmetic gold-standard reference; cross-validate oracle; (later)
-    auto-tuning hybrid prototype.
+6.3 Interval-arithmetic gold-standard reference — **now the top item**: the grid
+    shows fractal verdicts hinge on the oracle exactly where it's least certain.
+    Cross-validate the dense march against it on Mandelbulb/Menger.
+6.4 (New, from data) Fix Segment tracing — its candidate-segment extension/bracket
+    mishandles curved/thin geometry (broken on every non-planar scene). Until then
+    its verdicts are a bug, not a method comparison.
 
 ---
 
@@ -247,8 +261,12 @@ re-run against the improved oracle + matched-residual + safe variants:
    on Thin Torus (IoU 0.56→0.14, dnc=0 → confidently wrong, a bug in its
    extension/bracket on thin features), and it's far from baseline on Sphere too.
    Definitely not "≡ baseline at lower cost."
-4. ⏳ Open — revisit budget crossovers now that scoring uses the trusted oracle
-   (the matched-residual axis is the cleaner lens; budget crossovers next).
+4. ◑ **Largely addressed by the grid.** Under the trusted oracle + matched
+   residual, the well-behaved methods converge to the *same* IoU — the apparent
+   "best method changes with budget" crossovers live almost entirely among the
+   *broken* methods (Segment, Naive-relaxed) where low budget masks their failure.
+   No evidence of an oracle-bias artifact on the analytic scenes. Remaining doubt
+   is fractal-only (gate-1 territory → interval reference, Phase 6.3).
 
 ---
 
