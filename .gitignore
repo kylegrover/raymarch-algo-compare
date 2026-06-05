@@ -13,8 +13,11 @@ results/
 # generated analysis artifacts (regenerable from the sweep engine)
 # ground-truth + method captures (.npz / meta.json)
 references/
-# sweep dataset (machine-specific provenance)
+# sweep datasets (machine-specific provenance)
 sweep.jsonl
+sweep_*.jsonl
+# scheduled-run logs
+*.log
 # generated comparison / analysis reports
 *.html
 .pytest_cache/
