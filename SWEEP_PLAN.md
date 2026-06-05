@@ -237,15 +237,27 @@ broken off the plane** (Thin-Torus IoU 0.003); eval-count ≠ ms (Enhanced); the
 **Mandelbulb is where the oracle's own trust runs out** (no method > ~0.98).
 
 **Phase 6 — Discovery** (priorities sharpened by the grid)
+6.3 Interval-arithmetic gold-standard reference — **DONE (metric scenes)**. Sound
+    first-hit oracle by interval root isolation (`gpu/interval.py`,
+    `gpu/interval_oracle.py`): `lo>0` *proves* a segment empty ⇒ no tunneling.
+    Validated @384 (`gpu/interval_validation.py`): interval-vs-analytic IoU 1.0 on
+    sphere/cube/torus (~5e-6 depth), and **dense-vs-interval IoU 1.0000 on all
+    four** → the grid's dense-march oracle is sound on metric scenes to ~5e-6.
+    Mandelbulb/Menger **deferred** (need interval *escape-time*, not IA on the
+    distance estimator); fractal verdicts stay provisional.
+6.4 Faithful method ceilings — **DONE (offline)**, refuting the strawman verdicts:
+    • Segment: a *sound* Galin tracer (directional-Lipschitz K via interval
+      autodiff, `gpu/interval_autodiff.py` + `gpu/faithful_offline.py`) reaches
+      Thin-Torus **core IoU 1.0000** (strawman 0.003) and grazing-plane hits in
+      ~3 steps — "broken" was an implementation artifact, not the technique.
+    • RevAA: real revised affine arithmetic (`gpu/affine.py`) is **sound** (IoU 1.0,
+      not "≡ Standard") and tighter than IA where correlation survives (Sphere
+      1.17× fewer evals); no win on min/max-dominated SDFs. Honest, not tautological.
+    These are offline accuracy/cost ceilings, **not** GPU-timed competitors;
+    FINDINGS.md is left as-is until a faithful re-run/rewrite is decided.
 6.1 Per-run scene/ray feature extraction + storage (local Lipschitz est, grazing
-    fraction, thin-feature density, iteration variance).
-6.2 Analysis: feature → Pareto-optimal-method characterization; selection criteria.
-6.3 Interval-arithmetic gold-standard reference — **now the top item**: the grid
-    shows fractal verdicts hinge on the oracle exactly where it's least certain.
-    Cross-validate the dense march against it on Mandelbulb/Menger.
-6.4 (New, from data) Fix Segment tracing — its candidate-segment extension/bracket
-    mishandles curved/thin geometry (broken on every non-planar scene). Until then
-    its verdicts are a bug, not a method comparison.
+    fraction, thin-feature density, iteration variance). *(still open)*
+6.2 Analysis: feature → Pareto-optimal-method characterization. *(still open)*
 
 ---
 
