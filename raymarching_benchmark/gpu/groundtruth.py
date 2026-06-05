@@ -31,10 +31,22 @@ def force_utf8_stdout() -> None:
         pass
 
 
+# The interim ground-truth oracle understeps standard sphere tracing: each step
+# is scaled by this factor (< 1) so the march reaches grazing/thin surfaces
+# instead of stalling short, and tolerates mild Lipschitz violations (up to
+# ~1/ORACLE_STEP_SCALE) without overshooting through the surface. Validated
+# against analytic depth where closed form exists (see oracle_calibration.py).
+ORACLE_STEP_SCALE = 0.6
+
+
 def reference_march_config(**overrides) -> MarchConfig:
-    """High-budget marching config used as ground truth."""
+    """High-budget marching config used as ground truth.
+
+    The iteration budget is large enough to absorb the understep factor
+    (understepping by 0.6 needs ~1.7x as many steps to reach the surface).
+    """
     cfg = MarchConfig(
-        max_iterations=4096,
+        max_iterations=12000,
         hit_threshold=1e-6,
         max_distance=100.0,
     )
@@ -42,6 +54,68 @@ def reference_march_config(**overrides) -> MarchConfig:
     for k, v in overrides.items():
         setattr(cfg, k, v)
     return cfg
+
+
+def oracle_params() -> dict:
+    """Shader uniform overrides that define the ground-truth oracle."""
+    return {"stepScale": ORACLE_STEP_SCALE}
+
+
+# ── Dense-march reference (additional, higher-trust oracle) ──────────────────
+# An understepped trace with a HARD minimum-step floor and sign-change
+# bisection (GLSL strategy id 9, `dense_march`). Unlike the understep oracle
+# above it cannot stall short at grazing angles (the floor guarantees forward
+# progress) and it brackets+bisects the first surface for sub-step-accurate
+# depth. minStep bounds the thinnest resolvable feature. We capture BOTH this
+# and the understep oracle per frame so the dataset can show the old oracle's
+# bias explicitly. Validated against closed-form depth in oracle_calibration.py;
+# DENSE_MIN_STEP is the value chosen from that convergence sweep.
+DENSE_MARCH_STRATEGY_ID = 9
+DENSE_STEP_SCALE = 0.5
+# Chosen from the oracle_calibration.py minStep sweep: hit accuracy reaches its
+# knee by 0.01 and depth/IoU are flat below it, while cost is ~constant across
+# the whole range (adaptive strides dominate). 0.002 sits well past the knee,
+# giving ~5x headroom below the thinnest non-analytic features (thin-planes
+# shell ~0.01, onion 0.05) at no measurable cost. Validated: IoU 1.0000 +
+# ~1e-7 depth on sphere/cube/torus; grazing-plane core IoU 0.9905 (the 1.9%
+# shortfall is the shared maxDistance horizon clip, not a resolution error).
+DENSE_MIN_STEP = 0.002
+
+
+def dense_march_params(min_step: float = DENSE_MIN_STEP) -> dict:
+    """Shader uniform overrides that define the dense-march reference."""
+    return {"stepScale": DENSE_STEP_SCALE, "minStep": float(min_step)}
+
+
+def dense_march_config(**overrides) -> MarchConfig:
+    """High-iteration config for the dense march. The minStep floor means the
+    march crawls near surfaces, so it needs a large iteration ceiling to absorb
+    pathological grazing crawls before reporting non-convergence."""
+    cfg = MarchConfig(
+        max_iterations=40000,
+        hit_threshold=1e-6,
+        max_distance=100.0,
+    )
+    cfg.min_step_fraction = 0.0
+    for k, v in overrides.items():
+        setattr(cfg, k, v)
+    return cfg
+
+
+def capture_dense_reference(scene_name: str, *, width: int = 512, height: int = 512,
+                            runner: Optional[GPURunner] = None,
+                            min_step: float = DENSE_MIN_STEP
+                            ) -> Tuple[Dict, RenderConfig, MarchConfig]:
+    scene_id, scene = _resolve_scene(scene_name)
+    if scene is None:
+        raise ValueError(f"Unknown scene: {scene_name!r}")
+    rc = reference_render_config(scene, width, height)
+    mc = dense_march_config()
+    runner = runner or GPURunner()
+    cap = runner.capture(scene_id, DENSE_MARCH_STRATEGY_ID, rc, mc,
+                         lipschitz=scene.known_lipschitz_bound(),
+                         params=dense_march_params(min_step))
+    return cap, rc, mc
 
 
 def _resolve_scene(scene_name: str):
@@ -83,7 +157,9 @@ def capture_reference(scene_name: str, *, width: int = 512, height: int = 512,
     rc = reference_render_config(scene, width, height)
     mc = march_cfg or reference_march_config()
     runner = runner or GPURunner()
-    cap = runner.capture(scene_id, 0, rc, mc, lipschitz=scene.known_lipschitz_bound())
+    cap = runner.capture(scene_id, 0, rc, mc,
+                         lipschitz=scene.known_lipschitz_bound(),
+                         params=oracle_params())
     return cap, rc, mc
 
 
@@ -95,12 +171,19 @@ def generate_references(scene_names: List[str], out_dir: str = "references",
     results: Dict[str, str] = {}
 
     for name in scene_names:
+        # Primary (understep) oracle — shares the depth normalization for PNGs.
         cap, rc, mc = capture_reference(name, width=width, height=height, runner=runner)
         scene_dir = os.path.join(out_dir, safe_scene_name(name))
         drange = depth_range_of(cap)
         npz = save_capture(cap, scene_dir, "reference", depth_range=drange)
-
         hit_rate = float(cap["hit"].mean())
+
+        # Additional dense-march oracle (higher trust). Same camera/resolution;
+        # stored alongside so the two references can be compared per frame.
+        dcap, _, dmc = capture_dense_reference(name, width=width, height=height, runner=runner)
+        save_capture(dcap, scene_dir, "reference_dense", depth_range=drange)
+        dense_hit_rate = float(dcap["hit"].mean())
+
         meta = {
             "scene": name,
             "resolution": [width, height],
@@ -112,18 +195,30 @@ def generate_references(scene_names: List[str], out_dir: str = "references",
                 "fov_degrees": rc.fov_degrees,
             },
             "reference_march": {
+                "kind": "understep_standard",
+                "step_scale": ORACLE_STEP_SCALE,
                 "max_iterations": mc.max_iterations,
                 "hit_threshold": mc.hit_threshold,
                 "max_distance": mc.max_distance,
             },
+            "reference_dense": {
+                "kind": "dense_march",
+                "step_scale": DENSE_STEP_SCALE,
+                "min_step": DENSE_MIN_STEP,
+                "max_iterations": dmc.max_iterations,
+                "hit_threshold": dmc.hit_threshold,
+                "max_distance": dmc.max_distance,
+            },
             "hit_rate": hit_rate,
+            "dense_hit_rate": dense_hit_rate,
             "depth_range": list(drange),
         }
         with open(os.path.join(scene_dir, "meta.json"), "w", encoding="utf-8") as f:
             json.dump(meta, f, indent=2)
 
         results[name] = npz
-        print(f"  [ok] {name:<24} hit_rate={hit_rate:6.2%}  depth=[{drange[0]:.3f},{drange[1]:.3f}]  -> {scene_dir}")
+        print(f"  [ok] {name:<24} hit={hit_rate:6.2%}  dense_hit={dense_hit_rate:6.2%}"
+              f"  depth=[{drange[0]:.3f},{drange[1]:.3f}]  -> {scene_dir}")
 
     return results
 

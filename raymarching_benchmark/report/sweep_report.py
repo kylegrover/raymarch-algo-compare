@@ -7,7 +7,7 @@ achievable under T ms"). This is where "measure by steps OR evals OR runtime"
 pays off: the same data, three x-axes, plus the practical time-budget ranking.
 
     uv run python -m raymarching_benchmark.report.sweep_report \
-        --in sweep.jsonl --out sweep_report.html --metric color_ssim
+        --in sweep.jsonl --out sweep_report.html --metric iou
 """
 from __future__ import annotations
 import io
@@ -27,8 +27,9 @@ from ..data.dataset import JsonlDataset
 
 
 ACCURACY_LABELS = {
+    "iou": "Hit IoU (primary)",            # objective geometric — the ranking metric
     "color_ssim": "Color SSIM", "depth_ssim": "Depth SSIM",
-    "normal_ssim": "Normal SSIM", "iou": "Hit IoU",
+    "normal_ssim": "Normal SSIM",          # SSIM = descriptive only
 }
 HIGHER_BETTER = True  # all the metrics above are higher-is-better
 TAB = plt.get_cmap("tab10")
@@ -174,8 +175,10 @@ def main(argv=None) -> int:
     p = argparse.ArgumentParser(description="Sweep JSONL -> standalone HTML analysis.")
     p.add_argument("--in", dest="inp", type=str, default="sweep.jsonl")
     p.add_argument("--out", type=str, default="sweep_report.html")
-    p.add_argument("--metric", type=str, default="color_ssim",
-                   choices=list(ACCURACY_LABELS.keys()))
+    p.add_argument("--metric", type=str, default="iou",
+                   choices=list(ACCURACY_LABELS.keys()),
+                   help="Ranking metric for runtime-matched winners. Default IoU "
+                        "(primary objective geometric); SSIM is descriptive only.")
     args = p.parse_args(argv)
 
     rows = JsonlDataset.load(args.inp)

@@ -13,6 +13,12 @@ uniform float lipschitz;  // global Lipschitz (optional)
 uniform float kappa;      // growth factor for next candidate segment
 uniform float minStep;    // minimum allowed march step (safety)
 
+// Step scaling: standard tracing multiplies each step by this factor.
+// Default 1.0 (true sphere tracing). The ground-truth oracle understeps with a
+// value < 1 (e.g. 0.6) to reach grazing/thin surfaces and tolerate mild
+// Lipschitz violations without overshooting.
+uniform float stepScale;  // default 1.0
+
 // Small epsilon to avoid division-by-zero
 const float EPS = 1e-6;
 
@@ -34,7 +40,7 @@ MarchResult standard(vec3 ro, vec3 rd) {
         it = i + 1;
         d = map(ro + rd*t);
         if(abs(d) < hitThreshold) return MarchResult(true, t, it, d);
-        t += d;
+        t += d * stepScale;
         if(t > maxDistance) break;
     }
     return MarchResult(false, t, it, d);
@@ -480,6 +486,104 @@ MarchResult rev_affine(vec3 ro, vec3 rd) {
 
         t = next_t;
         if (t > maxDistance) break;
+    }
+    return MarchResult(false, t, it, d);
+}
+
+// ============================================================================
+// 11. Safe Over-Relaxed Sphere Tracing (Keinert et al. 2014)
+// ============================================================================
+// The faithful "safe" over-relaxation: it predictively detects when an
+// over-relaxed step would leave consecutive unbounding spheres DISJOINT (i.e.
+// it may have skipped a surface) and retreats to a conservative step BEFORE
+// committing — unlike the naive `relaxed`/`heuristic_auto_relaxed` here, which
+// only notice an overshoot after the SDF goes negative and therefore tunnel
+// straight through thin features. Convergence uses our absolute hitThreshold
+// (not the paper's screen-space pixelRadius) to stay comparable to the other
+// strategies in this benchmark.
+MarchResult safe_relaxed(vec3 ro, vec3 rd) {
+    float t = 0.0;
+    int it = 0;
+    float omega_eff = omega;
+    float prevRadius = 0.0;
+    float stepLength = 0.0;
+    float d = 0.0;
+
+    for (int i = 0; i < maxIterations; i++) {
+        it = i + 1;
+        d = map(ro + rd * t);
+        float radius = abs(d);
+
+        // Disjoint-sphere test: the spheres at the previous and current points
+        // must overlap to cover the step we just took.
+        bool sorFail = (omega_eff > 1.0) && ((radius + prevRadius) < stepLength);
+        if (sorFail) {
+            // Undo the over-relaxation and fall back to conservative stepping.
+            stepLength -= omega_eff * stepLength;
+            omega_eff = 1.0;
+        } else {
+            stepLength = d * omega_eff;
+        }
+        prevRadius = radius;
+
+        // A hit is only valid on a step we didn't just retreat from.
+        if (!sorFail && radius < hitThreshold) return MarchResult(true, t, it, d);
+
+        t += stepLength;
+        if (t > maxDistance) break;
+        if (t < 0.0) t = 0.0;
+    }
+    return MarchResult(false, t, it, d);
+}
+
+// ============================================================================
+// 12. Dense March (calibration oracle, NOT a sweep competitor)
+// ============================================================================
+// An understepped trace with a HARD minimum-step floor and sign-change
+// bisection. Unlike sphere tracing it deliberately forfeits the safe-step
+// guarantee — a floored step can pass a surface — but:
+//   (a) it crosses empty space in big adaptive strides, step = max(d*stepScale,
+//       minStep), so it stays cheap (only crawls near surfaces);
+//   (b) it brackets the first surface by |d| < hitThreshold OR a sign change
+//       since the last sample, then bisects the bracket to the true root, so
+//       depth is sub-step accurate regardless of stride;
+//   (c) minStep bounds the thinnest feature it can resolve — anything thinner
+//       tunnels only in the narrow silhouette band, which is exactly what the
+//       closed-form analytic calibration quantifies.
+// Used as an additional ground-truth reference, validated against analytic
+// depth where closed form exists. See gpu/analytic.py + gpu/oracle_calibration.py.
+MarchResult dense_march(vec3 ro, vec3 rd) {
+    int it = 1;
+    float t = 0.0;
+    float d = map(ro);                 // sample at t = 0
+    if (abs(d) < hitThreshold) return MarchResult(true, t, it, d);
+
+    for (int i = 1; i < maxIterations; i++) {
+        it = i + 1;
+        float prev_t = t;
+        float prev_d = d;
+
+        float step = max(d * stepScale, minStep);
+        t += step;
+        if (t > maxDistance) break;
+
+        d = map(ro + rd * t);
+
+        // Entered the surface between prev_t and t (solid: d crosses to <=0).
+        bool crossed = (prev_d > 0.0 && d <= 0.0);
+        if (crossed) {
+            float a = prev_t;          // outside (d > 0)
+            float b = t;               // inside  (d <= 0)
+            for (int j = 0; j < 30; j++) {
+                float mid = 0.5 * (a + b);
+                float dm = map(ro + rd * mid);
+                if (dm > 0.0) a = mid; else b = mid;
+            }
+            float tm = 0.5 * (a + b);
+            return MarchResult(true, tm, it, map(ro + rd * tm));
+        }
+        // Tangent / grazing hit that never goes negative.
+        if (abs(d) < hitThreshold) return MarchResult(true, t, it, d);
     }
     return MarchResult(false, t, it, d);
 }

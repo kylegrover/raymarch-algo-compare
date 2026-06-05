@@ -55,10 +55,10 @@ class GPURunner:
             print(e)
             raise
 
-    def render(self, scene_id: int, strategy_id: int, 
+    def render(self, scene_id: int, strategy_id: int,
                render_cfg: RenderConfig, march_cfg: MarchConfig,
-               lipschitz: float = 1.0) -> np.ndarray:
-        
+               lipschitz: float = 1.0, params: Optional[dict] = None) -> np.ndarray:
+
         if self.prog is None:
             shader_dir = os.path.join(os.path.dirname(__file__), "shaders")
             self._load_shader(shader_dir)
@@ -111,9 +111,15 @@ class GPURunner:
         set_uniform('lipschitz', lipschitz)
         # Segment-tracing tuning (sensible defaults)
         set_uniform('kappa', 2.0)
+        set_uniform('beta', 0.3)
         # minStep: honor configured min_step_fraction but stay >= hitThreshold
         min_step = max(march_cfg.hit_threshold, march_cfg.min_step_fraction * march_cfg.max_distance)
         set_uniform('minStep', float(min_step))
+        set_uniform('stepScale', 1.0)   # 1.0 = true sphere tracing; oracle understeps
+        # Per-run parameter overrides (e.g. stepScale, omega, kappa) for sweeps.
+        if params:
+            for _k, _v in params.items():
+                set_uniform(_k, _v)
 
         # Full screen quad
         vertices = np.array([
@@ -145,7 +151,7 @@ class GPURunner:
 
     def capture(self, scene_id: int, strategy_id: int,
                 render_cfg: RenderConfig, march_cfg: MarchConfig,
-                lipschitz: float = 1.0):
+                lipschitz: float = 1.0, params: Optional[dict] = None):
         """Render once with full capture enabled and read back all targets.
 
         Returns a dict of top-left-origin numpy arrays:
@@ -207,8 +213,13 @@ class GPURunner:
         set_uniform('omega', 1.2)
         set_uniform('lipschitz', lipschitz)
         set_uniform('kappa', 2.0)
+        set_uniform('beta', 0.3)
         min_step = max(march_cfg.hit_threshold, march_cfg.min_step_fraction * march_cfg.max_distance)
         set_uniform('minStep', float(min_step))
+        set_uniform('stepScale', 1.0)
+        if params:
+            for _k, _v in params.items():
+                set_uniform(_k, _v)
 
         vertices = np.array([-1.0, -1.0, 1.0, -1.0, -1.0, 1.0, 1.0, 1.0], dtype='f4')
         vbo = self.ctx.buffer(vertices)
@@ -255,12 +266,14 @@ def run_gpu_benchmark(scene_name: str, strategy_name: str, render_cfg: RenderCon
     strategy_map = {
         "Standard": 0,
         "Overstep-Bisect": 1,
-        "Relaxed(ω=1.2)": 2,
+        "Relaxed(ω=1.2)": 2, "Naive-Relaxed": 2,   # naive over-relaxation
         "Segment": 3,
         "Enhanced": 4,
-        "AR-ST": 5,
+        "AR-ST": 5, "Naive-Auto-Relaxed": 5,       # naive auto over-relaxation
         "Skipping-Spheres": 6,
         "RevAA": 7,
+        "Safe-Relaxed": 8,                          # Keinert 2014 (predictive)
+        "Dense-March": 9,   # calibration oracle, not a sweep competitor
         "Hybrid": 1, # Using Overstep-Bisect as Hybrid proxy for now
     }
     strat_id = strategy_map.get(strategy_name, 0)

@@ -25,7 +25,10 @@ import numpy as np
 
 from .config import RenderConfig, MarchConfig
 from .gpu.runner import GPURunner
-from .gpu.groundtruth import _resolve_scene, reference_render_config, reference_march_config
+from .gpu.groundtruth import (
+    _resolve_scene, reference_render_config,
+    dense_march_config, dense_march_params, DENSE_MARCH_STRATEGY_ID, DENSE_MIN_STEP,
+)
 from .metrics.scoring import score_capture
 from .data.dataset import JsonlDataset
 from .data.provenance import provenance, config_hash
@@ -33,11 +36,19 @@ from .data.provenance import provenance, config_hash
 
 DEFAULT_SCENES = ["Sphere", "Grazing Plane", "Thin Torus", "Mandelbulb"]
 DEFAULT_BUDGETS = [32, 64, 128, 256, 512]
+# NOTE on naming (SWEEP_PLAN §I): ids 2 and 5 use NAIVE over-relaxation —
+# t += d*ω with *post-hoc* overshoot backup, which cannot catch a step that
+# tunnels cleanly through a thin feature. They are labeled "Naive-..." so the
+# names mean what the field expects. id 8 (Safe-Relaxed) is the faithful
+# Keinert et al. 2014 safe over-relaxation with the *predictive* disjoint-sphere
+# fallback. id 9 (dense_march) is the calibration oracle and is intentionally
+# NOT a competitor here.
 STRATEGIES: List[Tuple[int, str]] = [
-    (0, "Standard"), (1, "Overstep-Bisect"), (2, "Relaxed"), (3, "Segment"),
-    (4, "Enhanced"), (5, "Heuristic-Auto-Relaxed"), (6, "Skipping-Spheres"), (7, "RevAA"),
+    (0, "Standard"), (1, "Overstep-Bisect"), (2, "Naive-Relaxed"), (3, "Segment"),
+    (4, "Enhanced"), (5, "Naive-Auto-Relaxed"), (6, "Skipping-Spheres"), (7, "RevAA"),
+    (8, "Safe-Relaxed"),
 ]
-REFERENCE_TAG = "Standard@4096/1e-6"
+REFERENCE_TAG = f"Dense-March@minStep={DENSE_MIN_STEP}"
 
 
 def _force_utf8():
@@ -83,7 +94,11 @@ def run_sweep(out_path: str, scene_names: List[str], budgets: List[int],
             continue
         rc = reference_render_config(scene, res, res)
         lip = scene.known_lipschitz_bound()
-        refs[name] = runner.capture(scene_id, 0, rc, reference_march_config(), lipschitz=lip)
+        # Score against the calibrated dense-march oracle (validated to ~1e-7
+        # depth / IoU 1.0 on analytic scenes), not v1's plain high-budget trace.
+        refs[name] = runner.capture(scene_id, DENSE_MARCH_STRATEGY_ID, rc,
+                                    dense_march_config(), lipschitz=lip,
+                                    params=dense_march_params())
         scene_meta[name] = (scene_id, scene, rc, lip)
 
     combos = [(n, sid, lbl, b) for n in scene_meta

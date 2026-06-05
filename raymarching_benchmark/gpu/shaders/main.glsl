@@ -69,6 +69,8 @@ void main() {
     else if (strategyId == 5) res = heuristic_auto_relaxed(ro, rd);
     else if (strategyId == 6) res = skipping_spheres(ro, rd);
     else if (strategyId == 7) res = rev_affine(ro, rd);
+    else if (strategyId == 8) res = safe_relaxed(ro, rd);
+    else if (strategyId == 9) res = dense_march(ro, rd);
     else res = standard(ro, rd);
 
     int marchEvals = g_evals;   // snapshot before calcNormal adds its own evals

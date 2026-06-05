@@ -182,11 +182,23 @@ re-run against the improved oracle + matched-residual + safe variants:
 
 ## Revised phased roadmap
 
-**Phase 3 — Trustworthy oracle + metrics**
-3.1 Understepped (×0.6, high-budget) reference, replacing v1's reference.
-3.2 Analytic depth for closed-form scenes; oracle-residual calibration report.
-3.3 Accuracy: IoU primary, FLIP, SSIM secondary.
-3.4 Safe over-relaxation (Keinert) + relabel; re-examine suspect findings.
+**Phase 3 — Trustworthy oracle + metrics — DONE**
+3.1 ✅ Understepped (×0.6) reference kept; superseded as the *primary* oracle by
+    a **dense march** (id 9): understep ×0.5 + hard `minStep` floor + sign-change
+    bisection. Both are captured per frame (`reference` + `reference_dense`).
+3.2 ✅ Closed-form ray intersections (sphere/plane/cube/torus) in `gpu/analytic.py`;
+    `gpu/oracle_calibration.py` reports the residual vs analytic. **Result:** dense
+    march = IoU 1.0000 / ~1e-7 depth on sphere/cube/torus; grazing-plane core IoU
+    0.9905 (the 1.9% gap is the shared `maxDistance` horizon clip, invariant to
+    minStep). The old understep oracle silently missed **11.6%** of the grazing
+    plane — now quantified. `minStep=0.002` chosen (cost flat across the sweep).
+3.3 ✅ IoU promoted to PRIMARY ranking metric (sweep_report + scoring hierarchy);
+    SSIM demoted to descriptive. FLIP deferred.
+3.4 ✅ Safe over-relaxation (Keinert, id 8) added; naive ids 2/5 relabeled
+    "Naive-*". Re-exam confirms: Thin-Torus Naive-Relaxed IoU **0.667** vs
+    Safe-Relaxed **1.000** — the "skips thin geometry" finding is a naive-only
+    artifact. (Surfaced for Phase 4: Segment collapses on Thin Torus IoU 0.158 —
+    *not* "≡ baseline"; needs its own re-exam, gate #3.)
 
 **Phase 4 — Fair cost + matched residual**
 4.1 GPU timer queries; keep eval count; add divergence/occupancy where available.
@@ -209,13 +221,16 @@ re-run against the improved oracle + matched-residual + safe variants:
 
 ## Validation gates (must answer before trusting any number)
 
-1. On analytic scenes, what is the understep-oracle's residual vs closed-form
-   depth? (Bounds oracle bias.)
-2. Which over-relaxation is each labeled strategy actually running? (Safe vs
-   naive — they mean opposite things.)
-3. The "interval ≡ baseline" null — on which axis, and is it a bug or a quiet win?
-4. Is each budget crossover a real Pareto effect or an oracle-bias artifact?
-   (Check on analytic scenes.)
+1. ✅ **ANSWERED.** Dense-march oracle residual vs closed form: ~1e-7 depth /
+   IoU 1.0000 on sphere/cube/torus; grazing-plane core IoU 0.9905 (rest = shared
+   far-clip). Old understep oracle missed 11.6% of the grazing plane. The sweep
+   now scores against the dense march. (`gpu/oracle_calibration.py`.)
+2. ✅ **ANSWERED.** ids 2/5 = naive (post-hoc backup), relabeled "Naive-*"; id 8
+   = Keinert safe. Thin-Torus IoU: naive 0.667 vs safe 1.000.
+3. ⏳ Partially: re-exam shows Segment is **far worse** than baseline on Thin
+   Torus (IoU 0.158) and Sphere (0.848) — *not* a null. Which axis / bug vs win
+   still to dissect (Phase 4).
+4. ⏳ Open — revisit budget crossovers now that scoring uses the trusted oracle.
 
 ---
 

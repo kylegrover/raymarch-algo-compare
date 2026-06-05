@@ -1,13 +1,23 @@
 """Score a method capture against a ground-truth reference capture.
 
-Three complementary families of accuracy, per the project goal:
+Metric hierarchy (post-review, SWEEP_PLAN §D):
 
-  * raw depth error  — per-pixel |t - t_ref| over pixels both agree are hits
-  * structural (SSIM) — on the depth image, the normal map, and the lit color
-  * hit-mask agreement — false-hit / false-miss / IoU
+  * PRIMARY (objective geometric) — **hit-mask IoU**, plus false-hit / false-miss.
+    A skipped thin feature or a ragged silhouette tanks IoU with no arbitrary
+    weighting, un-confounded by the large smooth regions everyone gets right.
+    This is the headline accuracy number used to pick winners.
+  * SECONDARY (objective, descriptive) — raw depth error (|t - t_ref| over
+    co-hit pixels) and normal angular error. Quantitative but only defined where
+    both agree there's a surface, so they can't see silhouette/thin-feature loss.
+  * TERTIARY (structural, descriptive only) — SSIM on the depth image, normal
+    map and lit color. Whole-image SSIM is dominated by the flat regions and
+    dilutes the silhouette errors that matter, so it is **demoted to descriptive**
+    and never used as the ranking objective. (FLIP, the peer-reviewed perceptual
+    metric meant to replace it as the primary perceptual measure, is deferred.)
 
-A fast-but-wrong strategy (silhouette errors, missed thin features) shows up as
-high false-miss + low SSIM even when its self-reported hit rate looks fine.
+``score_capture`` returns the explicit ``primary``/``secondary``/``tertiary``
+grouping and ALSO keeps the legacy flat keys (``hit``/``depth``/``normal``/
+``ssim``) so existing report/sweep consumers keep working.
 """
 from __future__ import annotations
 from typing import Dict
@@ -82,17 +92,34 @@ def _ssim_scores(method: Dict, reference: Dict) -> Dict[str, float]:
             "color_ssim": color_ssim, "color_rmse": color_rmse}
 
 
+#: The single objective metric used to rank strategies. Kept as a name so
+#: reports/sweeps don't hard-code "iou" in selection logic.
+PRIMARY_METRIC = "iou"
+
+
 def score_capture(method: Dict, reference: Dict) -> Dict[str, Dict]:
     """Full accuracy report of a method capture vs a reference capture.
 
     Both dicts must come from ``GPURunner.capture`` (same resolution/camera).
+
+    Returns the primary/secondary/tertiary hierarchy (see module docstring) plus
+    legacy flat keys for back-compat.
     """
     if method["hit"].shape != reference["hit"].shape:
         raise ValueError(
             f"shape mismatch: method {method['hit'].shape} vs reference {reference['hit'].shape}")
+    hit = _hit_metrics(method["hit"], reference["hit"])
+    depth = _depth_metrics(method, reference)
+    normal = _normal_angle_error(method, reference)
+    ssim_scores = _ssim_scores(method, reference)
     return {
-        "hit": _hit_metrics(method["hit"], reference["hit"]),
-        "depth": _depth_metrics(method, reference),
-        "normal": _normal_angle_error(method, reference),
-        "ssim": _ssim_scores(method, reference),
+        # explicit hierarchy
+        "primary": hit,                                   # IoU + false hit/miss
+        "secondary": {"depth": depth, "normal": normal},  # objective, co-hit only
+        "tertiary": ssim_scores,                          # descriptive SSIM
+        # legacy flat keys (existing consumers)
+        "hit": hit,
+        "depth": depth,
+        "normal": normal,
+        "ssim": ssim_scores,
     }

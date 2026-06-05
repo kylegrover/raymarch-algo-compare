@@ -36,12 +36,13 @@ DEFAULT_SCENES = ["Sphere", "Grazing Plane", "Thin Torus", "Mandelbulb"]
 STRATEGIES: List[Tuple[int, str]] = [
     (0, "Standard"),
     (1, "Overstep-Bisect"),
-    (2, "Relaxed"),
+    (2, "Naive-Relaxed"),          # naive over-relaxation (post-hoc backup)
     (3, "Segment"),
     (4, "Enhanced"),
-    (5, "Heuristic-Auto-Relaxed"),
+    (5, "Naive-Auto-Relaxed"),     # naive over-relaxation (post-hoc backup)
     (6, "Skipping-Spheres"),
     (7, "RevAA"),
+    (8, "Safe-Relaxed"),           # Keinert 2014 safe over-relaxation (predictive)
 ]
 
 
