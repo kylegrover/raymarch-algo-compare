@@ -120,6 +120,29 @@ def test_first_hit_matches_analytic_batch(scene_name):
 
 
 @pytest.mark.parametrize("scene_name", SCENES)
+def test_affine_range_encloses_sdf(scene_name):
+    """The affine form's range must enclose the SDF over the whole ray segment —
+    the soundness the RevAA root isolator relies on (no tunneling)."""
+    from raymarching_benchmark.gpu.affine import _aff_positions
+    comp = COMPONENT_SCENES[scene_name]
+    rng = np.random.default_rng(11)
+    for _ in range(60):
+        ro = rng.uniform(-3.0, 3.0, size=3)
+        rd = _normalize(rng.uniform(-1.0, 1.0, size=(1, 3)), axis=-1)
+        t0 = np.array([rng.uniform(0.0, 2.0)])
+        t1 = t0 + rng.uniform(0.05, 1.0)
+        X, Y, Z = _aff_positions(ro, rd, t0, t1)
+        lo, hi = comp(X, Y, Z).range()
+        lo, hi = float(lo[0]), float(hi[0])
+        taus = np.linspace(t0[0], t1[0], 40)
+        P = ro[None, :] + taus[:, None] * rd
+        vals = _scalar_sdf(scene_name, P)
+        tol = 1e-6
+        assert np.all(vals >= lo - tol) and np.all(vals <= hi + tol), \
+            f"{scene_name}: sdf in [{vals.min():.3f},{vals.max():.3f}] escaped [{lo:.3f},{hi:.3f}]"
+
+
+@pytest.mark.parametrize("scene_name", SCENES)
 def test_autodiff_encloses_directional_derivative(scene_name):
     """The autodiff `der` interval must enclose the true g'(τ) everywhere on the
     segment — the soundness the faithful segment tracer's K bound relies on."""
