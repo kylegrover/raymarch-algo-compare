@@ -255,9 +255,27 @@ broken off the plane** (Thin-Torus IoU 0.003); eval-count ≠ ms (Enhanced); the
       1.17× fewer evals); no win on min/max-dominated SDFs. Honest, not tautological.
     These are offline accuracy/cost ceilings, **not** GPU-timed competitors;
     FINDINGS.md is left as-is until a faithful re-run/rewrite is decided.
-6.1 Per-run scene/ray feature extraction + storage (local Lipschitz est, grazing
-    fraction, thin-feature density, iteration variance). *(still open)*
-6.2 Analysis: feature → Pareto-optimal-method characterization. *(still open)*
+6.1 Per scene-view feature extraction — **DONE** (`report/features.py`,
+    `features.jsonl`, 23 scene-views). Strategy-*independent* features so they join
+    to every grid row sharing (scene, viewpoint) — **no GPU re-run**: hit_rate,
+    grazing_frac, silhouette_cplx, hardness_mean/cv (dense-march evals), plus CPU-
+    sampled lipschitz_p99 and thin_slab. Sanity: lipschitz_p99 = 1.000 on every
+    metric SDF, 2.000 on Bad-Lipschitz (the deliberate 2×), 7–13 on Mandelbulb;
+    thin_slab orders Sphere 0.31 > Thin-Torus 0.04 > Mandelbulb 0.013.
+6.2 Feature → Pareto-optimal-method — **DONE** (`report/discovery.py`). Joins 6.1
+    to the grid; regime-aware winner (cost = cheapest reaching IoU≥0.99; accuracy =
+    most-accurate where none do). **Two load-bearing results:**
+    • *A small feature set predicts the winner.* By GPU ms: grazing_frac→**Segment**,
+      high lipschitz_p99 (non-metric/fractal)→**Naive over-relaxation**, else→
+      **Standard**. Top discriminators: grazing_frac, hardness_cv, lipschitz_p99.
+    • *The answer depends on the cost axis.* Ranked by **SDF evals** Standard wins
+      **0** views (Naive-Relaxed 6, Enhanced 5); ranked by **GPU ms** Standard wins
+      **7** — eval-count under-charges the adaptive tracers' warp divergence (the
+      Phase-4 caveat, here it *reorders the whole conclusion*). Regenerate:
+      `report.discovery --cost {evals,ms}` → `discovery_by_{evals,ms}.md`.
+    Caveat: only the 5 grid scenes × viewpoints are joinable; 9 more scene-views
+    have features but no grid rows (Cylinder/CSG/Onion/Menger/Pillars/…). Widening
+    the grid to them is the cheap, high-leverage next step.
 
 ---
 

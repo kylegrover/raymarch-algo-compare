@@ -16,6 +16,9 @@ references/
 # sweep datasets (machine-specific provenance)
 sweep.jsonl
 sweep_*.jsonl
+# discovery feature cache + reports (regenerable: report.features / report.discovery)
+features.jsonl
+discovery_*.md
 # scheduled-run logs
 *.log
 # generated comparison / analysis reports
