@@ -54,14 +54,21 @@ def load_features(path: str) -> Dict[Tuple[str, str], Dict[str, float]]:
     return feats
 
 
-def winner_per_view(recs: List[Dict], acc: float, cost: str = "evals"
+def winner_per_view(recs: List[Dict], acc: float, cost: str = "evals",
+                    acc_frac: float = 0.98
                     ) -> Dict[Tuple[str, str], Dict]:
     """Per (scene, view): the regime-aware winning method + diagnostics.
 
     ``cost`` selects the cost axis for the cost regime: ``"evals"`` (SDF
     evaluations/ray) or ``"ms"`` (GPU wall-clock). Phase 4 showed the two
     *disagree* for adaptive tracers (eval-cheap but ms-dear), so the winner can
-    flip with this choice — running both is the honest cross-check."""
+    flip with this choice — running both is the honest cross-check.
+
+    The cost-regime accuracy bar is **per-view relative**: ``min(acc, acc_frac ×
+    best-achievable-IoU in that view)``. A flat 0.99 bar wrongly shunts scenes the
+    oracle can't certify that high (e.g. Mandelbulb plateaus ~0.98) into the
+    accuracy regime, hiding the real equal-quality ms winner. Reaching 98% of the
+    best *any* method achieves there is the honest "good enough" for that view."""
     other = "ms" if cost == "evals" else "evals"
     by_sv = defaultdict(lambda: defaultdict(list))
     for r in recs:
@@ -70,10 +77,11 @@ def winner_per_view(recs: List[Dict], acc: float, cost: str = "evals"
     out: Dict[Tuple[str, str], Dict] = {}
     for sv, by_strat in by_sv.items():
         best_iou = {s: max(r["iou"] for r in lst) for s, lst in by_strat.items()}
-        # cheapest record (by the chosen cost axis) that reaches `acc`, per strategy
+        bar = min(acc, acc_frac * max(best_iou.values()))
+        # cheapest record (by the chosen cost axis) that reaches `bar`, per strategy
         reach: Dict[str, Tuple[float, float]] = {}
         for s, lst in by_strat.items():
-            ok = [r for r in lst if r["iou"] >= acc]
+            ok = [r for r in lst if r["iou"] >= bar]
             if ok:
                 b = min(ok, key=lambda r: (r[cost], r[other]))
                 reach[s] = (b[cost], b[other])
@@ -90,13 +98,40 @@ def winner_per_view(recs: List[Dict], acc: float, cost: str = "evals"
             ordered = sorted(best_iou.values(), reverse=True)
             margin = (ordered[0] - ordered[1]) if len(ordered) > 1 else float("inf")
         out[sv] = {"regime": regime, "winner": win, "win_val": win_val,
-                   "margin": margin, "n_reach": len(reach),
+                   "margin": margin, "n_reach": len(reach), "bar": bar,
+                   "reach": reach, "best_iou": best_iou,
                    "n_strats": len(by_strat), "best_iou_max": max(best_iou.values())}
     return out
 
 
+def section_cost_to_quality(wins: Dict[Tuple[str, str], Dict], keys, cost: str) -> List[str]:
+    """Per scene-view: the wall-clock/eval COST each method needs to reach the
+    per-view quality bar, cheapest first. This is the lens that avoids the single-
+    winner noise-latching — it shows the whole accuracy-feasible frontier and by
+    how much the winner actually leads (e.g. Enhanced reaching Mandelbulb quality
+    at ~0.84ms vs Standard ~2.2ms). 'cap' = never reaches the bar at any setting."""
+    unit = "ms" if cost == "ms" else "evals"
+    out = [f"\n## 5. Cost-to-converged-quality per method ({unit}, cheapest first)\n",
+           f"Cost ({unit}) for each method to reach its view's quality bar "
+           "(min(0.99, 0.98×best-IoU)). **cap** = no setting reaches it (structurally "
+           "limited there). The lead of #1 over #2 is the real, noise-free margin — "
+           "unlike a single 'winner', this shows *by how much* and *who else is close*.\n",
+           "| scene · view | bar | ranked cost-to-quality (method:cost) |",
+           "|---|---|---|"]
+    for sv in keys:
+        w = wins[sv]
+        ranked = sorted(w["reach"].items(), key=lambda kv: kv[1][0])
+        cells = [f"**{m}:{c[0]:.3g}**" if i == 0 else f"{m}:{c[0]:.3g}"
+                 for i, (m, c) in enumerate(ranked)]
+        capped = [m for m in w["best_iou"] if m not in w["reach"]]
+        tail = f" · cap: {', '.join(sorted(capped))}" if capped else ""
+        out.append(f"| {sv[0]} · {sv[1]} | {w['bar']:.3f} | {' · '.join(cells) if cells else '—'}{tail} |")
+    return out
+
+
 def build_markdown(feats: Dict[Tuple[str, str], Dict[str, float]],
-                   wins: Dict[Tuple[str, str], Dict], acc: float) -> str:
+                   wins: Dict[Tuple[str, str], Dict], acc: float,
+                   cost: str = "evals") -> str:
     keys = sorted(set(feats) & set(wins))
     missing_grid = sorted(set(feats) - set(wins))
 
@@ -173,6 +208,8 @@ def build_markdown(feats: Dict[Tuple[str, str], Dict[str, float]],
     for k, s in sorted(spreads, key=lambda x: -x[1]):
         out.append(f"| {k} | {s:.2f} |")
 
+    out += section_cost_to_quality(wins, keys, cost)
+
     if missing_grid:
         out += ["\n## Note: scene-views with features but no grid rows\n",
                 "These were captured by 6.1 but are absent from the grid (the grid ran a "
@@ -187,7 +224,9 @@ def main(argv: Optional[List[str]] = None) -> int:
     p = argparse.ArgumentParser(description="Join features to the grid; characterize feature→winner (6.2).")
     p.add_argument("--features", type=str, default="features.jsonl")
     p.add_argument("--grid", type=str, default="sweep_grid.jsonl")
-    p.add_argument("--acc", type=float, default=0.99, help="IoU bar for the cost regime.")
+    p.add_argument("--acc", type=float, default=0.99, help="Absolute cap on the cost-regime IoU bar.")
+    p.add_argument("--acc-frac", type=float, default=0.98,
+                   help="Per-view bar = min(acc, acc_frac × best-achievable-IoU in that view).")
     p.add_argument("--cost", choices=["evals", "ms"], default="evals",
                    help="Cost axis for the cost regime (Phase 4: the two can disagree).")
     p.add_argument("--out", type=str, default=None)
@@ -195,8 +234,8 @@ def main(argv: Optional[List[str]] = None) -> int:
 
     feats = load_features(args.features)
     recs = load_records(args.grid)
-    wins = winner_per_view(recs, args.acc, args.cost)
-    md = build_markdown(feats, wins, args.acc)
+    wins = winner_per_view(recs, args.acc, args.cost, args.acc_frac)
+    md = build_markdown(feats, wins, args.acc, args.cost)
     if args.out:
         with open(args.out, "w", encoding="utf-8") as f:
             f.write(md)

@@ -277,39 +277,54 @@ broken off the plane** (Thin-Torus IoU 0.003); eval-count ≠ ms (Enhanced); the
     have features but no grid rows (Cylinder/CSG/Onion/Menger/Pillars/…). Widening
     the grid to them is the cheap, high-leverage next step.
 
-6.5 **Overnight grid expansion — PLANNED.** Widen from 5 → **10 scenes** to give
-    6.2 real geometric/winner diversity. Only scenes whose **Python SDF ≡ GLSL SDF**
+6.5 **Overnight grid expansion — PLANNED (deepened).** Widen from 5 → **13 scenes**
+    for real geometric/winner diversity. Only scenes whose **Python SDF ≡ GLSL SDF**
     are admitted — features come from the Python SDF but the grid scores the GLSL
-    render, so a mismatch silently invalidates the join. Verified-consistent set
-    (10): Sphere, Grazing Plane, Cube, Thin Torus, Mandelbulb, **Cylinder, Near
-    Miss, Hollow Cube (CSG), Onion Shell, Thin Planes Stack**. The 5 new scenes
-    each got 3 curated viewpoints (`viewpoints.py`); all 15 verified to frame
-    geometry (hit-rate > 0.2) and to add regimes — Hollow-Cube thin CSG walls
-    (thin≈0.04), Thin-Planes grazing+thin (grazing 0.42, thin 0.013).
+    render, so a mismatch silently invalidates the join (each new scene verified to
+    ~1e-7 by checking |Python SDF| at GLSL surface points). Verified-consistent set
+    (13): Sphere, Grazing Plane, Cube, Thin Torus, Mandelbulb, Cylinder, Near Miss,
+    Hollow Cube (CSG), Onion Shell, Thin Planes Stack, **Menger Sponge** (fold-phase
+    reconciled), **Sphere Cloud** + **Bumpy Sphere** (new expensive-metric scenes,
+    24/31 primitives, costly eval + sound oracle). All curated 3 viewpoints each.
 
-    Run (two invocations append to one resumable file; settings match the existing
-    N=3864 so its rows are reused, not re-run):
+    **Why this is the deeper run (resolved §6.5 review): what actually gives the
+    adaptive methods a fair shot is NOT eval cost or more params — it is whether
+    sphere-tracing is forced into *many tiny steps*.** Measured: smooth metric
+    scenes (incl. the new expensive ones) converge in ~10–13 SDF evals/ray, so
+    Standard wins — expensive eval just scales everyone's ms equally. Adaptive
+    methods win where steps are forced small: **grazing** (Grazing Plane: Segment
+    0.23 ms vs Standard 0.60 ms, certifiable) and **intricate/non-metric** surfaces
+    (Mandelbulb: Enhanced 2.1×, Naive 9.8× at the lower bar). So the run leans into
+    grazing views + the fractal/intricate scenes, and two changes vs the first grid:
+      • **res 384 → 512** — the first grid sat in the GPU-overhead-dominated regime
+        (sub-ms frames); 512 moves the expensive scenes into the multi-ms regime
+        where eval savings translate to ms (Enhanced's Mandelbulb win is res-robust
+        but only clears the noise floor above res ~384).
+      • **budgets extended to 1024, 2048** — Mandelbulb/Menger don't converge by 512,
+        which wrongly shunted them to the accuracy regime in the first pass.
+    NOTE: res/budget changes mean the first N=3864 rows are NOT reused (config_hash
+    includes resolution) — this is a full fresh grid.
+
+    Run (two invocations append to one resumable file):
     ```
-    S="Sphere,Grazing Plane,Cube,Thin Torus,Mandelbulb,Cylinder,Near Miss,Hollow Cube (CSG),Onion Shell,Thin Planes Stack"
-    uv run python -m raymarching_benchmark.sweep --mode budget   --grid --full-score --res 384 --out sweep_grid.jsonl --scenes "$S"
-    uv run python -m raymarching_benchmark.sweep --mode residual --grid --full-score --res 384 --out sweep_grid.jsonl --scenes "$S"
+    S="Sphere,Grazing Plane,Cube,Thin Torus,Mandelbulb,Cylinder,Near Miss,Hollow Cube (CSG),Onion Shell,Thin Planes Stack,Menger Sponge (iter=3),Sphere Cloud,Bumpy Sphere"
+    uv run python -m raymarching_benchmark.sweep --mode budget   --grid --full-score --res 512 --budgets 32,64,128,256,512,1024,2048 --out sweep_grid512.jsonl --scenes "$S"
+    uv run python -m raymarching_benchmark.sweep --mode residual --grid --full-score --res 512 --out sweep_grid512.jsonl --scenes "$S"
     ```
-    Scale: ~29 scene-views × 276 rows = **~8k rows** (~4k new), ≈1–2 h on the 3090
-    at full-score. Then regenerate the join:
+    Scale: ~39 scene-views × ~330 rows ≈ **~13k rows**, several hours on the 3090 at
+    res 512 + full-score (a genuine overnight run). Then regenerate the join (the
+    per-view bar + cost-to-quality section surface where adaptive methods win):
     ```
     uv run python -m raymarching_benchmark.report.features  --res 256 --out features.jsonl
-    uv run python -m raymarching_benchmark.report.discovery --cost evals --out discovery_by_evals.md
-    uv run python -m raymarching_benchmark.report.discovery --cost ms    --out discovery_by_ms.md
+    uv run python -m raymarching_benchmark.report.discovery --grid sweep_grid512.jsonl --cost evals --out discovery_by_evals.md
+    uv run python -m raymarching_benchmark.report.discovery --grid sweep_grid512.jsonl --cost ms    --out discovery_by_ms.md
     ```
 
-    **Deferred — needs Python↔GLSL SDF reconciliation before grid admission** (each
-    is currently a *different scene* in the two backends):
+    **Still deferred — Python↔GLSL mismatch, reconcile before admitting:**
     • Smooth Blend — different smooth-min (Python `h²k/4` vs GLSL `mix`-form).
-    • Menger — fold phase offset (Python `mod(p·s+1,2)` vs GLSL `mod(p·s,2)`).
-    • Bad Lipschitz — Python `×2` (overshoot test) vs GLSL `×0.1` (underestimate);
-      a *semantic* choice (which failure mode to test) — decide direction, sync both.
+    • Bad Lipschitz — Python `×2` (overshoot) vs GLSL `×0.1` (underestimate); a
+      *semantic* choice (which failure mode to test) — decide direction, sync both.
     • Pillar Forest — radius/height differ + Python adds a floor plane, GLSL doesn't.
-    Reconcile (sync Python→GLSL, the rendered authority) then add to the run.
 
 ---
 

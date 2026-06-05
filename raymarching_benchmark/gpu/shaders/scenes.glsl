@@ -67,6 +67,68 @@ float map_impl(vec3 p) {
         float py_mod = mod(p.y + spacing * 0.5, spacing) - spacing * 0.5;
         return abs(py_mod) - 0.01;
     }
+    if (sceneId == 14) { // Sphere Cloud (expensive metric SDF — 24 spheres)
+        float d = 1e10;
+        d=min(d,sdSphere(p-vec3(0.4253,1.3505,0.9373),0.4723));
+        d=min(d,sdSphere(p-vec3(-0.9343,-0.6794,1.2701),0.4257));
+        d=min(d,sdSphere(p-vec3(-1.6821,1.0922,1.0100),0.3090));
+        d=min(d,sdSphere(p-vec3(-0.1090,-0.6697,-0.7534),0.4659));
+        d=min(d,sdSphere(p-vec3(-0.8334,-0.1867,0.0155),0.4879));
+        d=min(d,sdSphere(p-vec3(0.1819,1.6847,0.9951),0.4789));
+        d=min(d,sdSphere(p-vec3(0.4154,1.6625,-0.9680),0.4053));
+        d=min(d,sdSphere(p-vec3(-1.1553,0.3826,-1.5506),0.3120));
+        d=min(d,sdSphere(p-vec3(-1.5787,0.0506,-0.1149),0.3223));
+        d=min(d,sdSphere(p-vec3(1.4184,0.4394,0.0480),0.4841));
+        d=min(d,sdSphere(p-vec3(-0.0106,-0.8584,-1.6599),0.4015));
+        d=min(d,sdSphere(p-vec3(-1.0458,0.6529,-1.0179),0.3197));
+        d=min(d,sdSphere(p-vec3(-0.4436,-1.6873,1.1222),0.4745));
+        d=min(d,sdSphere(p-vec3(-1.1748,-0.7902,1.2931),0.4211));
+        d=min(d,sdSphere(p-vec3(0.0333,1.1803,0.4750),0.4053));
+        d=min(d,sdSphere(p-vec3(0.8220,-1.3889,0.1399),0.3628));
+        d=min(d,sdSphere(p-vec3(0.0264,1.2626,-0.4717),0.3704));
+        d=min(d,sdSphere(p-vec3(0.3338,-1.4985,-0.3821),0.3327));
+        d=min(d,sdSphere(p-vec3(-0.6017,-1.1893,1.0755),0.2884));
+        d=min(d,sdSphere(p-vec3(-0.4099,1.6277,0.3060),0.4728));
+        d=min(d,sdSphere(p-vec3(0.3572,0.4692,0.5999),0.3829));
+        d=min(d,sdSphere(p-vec3(-1.1873,-0.2029,-0.8855),0.4005));
+        d=min(d,sdSphere(p-vec3(-0.3315,-1.3712,1.5906),0.3509));
+        d=min(d,sdSphere(p-vec3(-0.9690,0.5840,-0.6786),0.4453));
+        return d;
+    }
+    if (sceneId == 15) { // Bumpy Sphere (expensive metric: base + 30 bumps)
+        float d = sdSphere(p, 1.4);
+        d=min(d,sdSphere(p-vec3(0.3841,1.4500,0.0000),0.18));
+        d=min(d,sdSphere(p-vec3(-0.4821,1.3500,0.4417),0.18));
+        d=min(d,sdSphere(p-vec3(0.0725,1.2500,-0.8260),0.18));
+        d=min(d,sdSphere(p-vec3(0.5860,1.1500,0.7643),0.18));
+        d=min(d,sdSphere(p-vec3(-1.0548,1.0500,-0.1866),0.18));
+        d=min(d,sdSphere(p-vec3(0.9794,0.9500,-0.6230),0.18));
+        d=min(d,sdSphere(p-vec3(-0.3209,0.8500,1.1935),0.18));
+        d=min(d,sdSphere(p-vec3(-0.5987,0.7500,-1.1528),0.18));
+        d=min(d,sdSphere(p-vec3(1.2698,0.6500,0.4637),0.18));
+        d=min(d,sdSphere(p-vec3(-1.2900,0.5500,0.5325),0.18));
+        d=min(d,sdSphere(p-vec3(0.6065,0.4500,-1.2960),0.18));
+        d=min(d,sdSphere(p-vec3(0.4365,0.3500,1.3917),0.18));
+        d=min(d,sdSphere(p-vec3(-1.2797,0.2500,-0.7416),0.18));
+        d=min(d,sdSphere(p-vec3(1.4577,0.1500,-0.3205),0.18));
+        d=min(d,sdSphere(p-vec3(-0.8622,0.0500,1.2264),0.18));
+        d=min(d,sdSphere(p-vec3(-0.1927,-0.0500,-1.4867),0.18));
+        d=min(d,sdSphere(p-vec3(1.1412,-0.1500,0.9618),0.18));
+        d=min(d,sdSphere(p-vec3(-1.4778,-0.2500,0.0611),0.18));
+        d=min(d,sdSphere(p-vec3(1.0339,-0.3500,-1.0289),0.18));
+        d=min(d,sdSphere(p-vec3(-0.0661,-0.4500,1.4294),0.18));
+        d=min(d,sdSphere(p-vec3(-0.8941,-0.5500,-1.0715),0.18));
+        d=min(d,sdSphere(p-vec3(1.3398,-0.6500,0.1803),0.18));
+        d=min(d,sdSphere(p-vec3(-1.0663,-0.7500,0.7419),0.18));
+        d=min(d,sdSphere(p-vec3(0.2713,-0.8500,-1.2058),0.18));
+        d=min(d,sdSphere(p-vec3(0.5771,-0.9500,1.0072),0.18));
+        d=min(d,sdSphere(p-vec3(-1.0205,-1.0500,-0.3256),0.18));
+        d=min(d,sdSphere(p-vec3(0.8743,-1.1500,-0.4039),0.18));
+        d=min(d,sdSphere(p-vec3(-0.3201,-1.2500,0.7649),0.18));
+        d=min(d,sdSphere(p-vec3(-0.2213,-1.3500,-0.6152),0.18));
+        d=min(d,sdSphere(p-vec3(0.3400,-1.4500,0.1787),0.18));
+        return d;
+    }
 
     return 1e10;
 }

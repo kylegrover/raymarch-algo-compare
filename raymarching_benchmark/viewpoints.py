@@ -89,6 +89,21 @@ _CURATED = {
         Viewpoint("grazing", "grazing", (0.0, 0.12, 6.2), (0.0, 0.05, 0.0)),
         Viewpoint("edge", "orthogonal", (3.0, 0.25, 4.0), (0.0, 0.25, 0.0)),
     ],
+    "Sphere Cloud": [   # 24-sphere expensive metric SDF; lots of empty traversal
+        Viewpoint("ortho", "orthogonal", (0.0, 0.0, 7.0)),
+        Viewpoint("angled", "orthogonal", (4.2, 3.2, 5.2)),
+        Viewpoint("macro", "macro", (0.0, 0.0, 4.6)),
+    ],
+    "Bumpy Sphere": [   # expensive metric + limb grazing crawl + thin bumps
+        Viewpoint("ortho", "orthogonal", (0.0, 0.0, 5.0)),
+        Viewpoint("macro", "macro", (0.0, 0.0, 2.6)),     # bumps fill frame, more limb
+        Viewpoint("angled", "orthogonal", (3.2, 2.2, 3.2)),
+    ],
+    "Menger Sponge (iter=3)": [  # reconciled Python≡GLSL; fractal, costly eval
+        Viewpoint("ortho", "orthogonal", (0.0, 0.0, 4.0)),
+        Viewpoint("corner", "orthogonal", (2.4, 2.0, 2.6)),
+        Viewpoint("grazing-face", "grazing", (3.6, 0.0, 0.6)),
+    ],
 }
 
 
