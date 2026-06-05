@@ -13,6 +13,10 @@ uniform float lipschitz;  // global Lipschitz (optional)
 uniform float kappa;      // growth factor for next candidate segment
 uniform float minStep;    // minimum allowed march step (safety)
 
+// Skipping-Spheres tuning: how much to fatten the SDF in the coarse pass so
+// thin features aren't skipped (larger = safer but more coarse iterations).
+uniform float margin;     // default 0.05
+
 // Step scaling: standard tracing multiplies each step by this factor.
 // Default 1.0 (true sphere tracing). The ground-truth oracle understeps with a
 // value < 1 (e.g. 0.6) to reach grazing/thin surfaces and tolerate mild
@@ -405,8 +409,8 @@ MarchResult segment(vec3 ro, vec3 rd) {
 MarchResult skipping_spheres(vec3 ro, vec3 rd) {
     float t = 0.0;
     int it = 0;
-    float margin = 0.05; // SDF Scaling margin to ensure thin features are caught
     float d = 0.0;
+    // margin (SDF fattening) is a tunable uniform — see declaration above.
 
     // Split the SHARED iteration budget so this method gets the same total
     // chances to converge as every other strategy (~2/3 coarse, 1/3 fine).

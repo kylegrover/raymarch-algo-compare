@@ -97,10 +97,20 @@ def _ssim_scores(method: Dict, reference: Dict) -> Dict[str, float]:
 PRIMARY_METRIC = "iou"
 
 
-def score_capture(method: Dict, reference: Dict) -> Dict[str, Dict]:
+_EMPTY_SSIM = {"depth_ssim": None, "normal_ssim": None,
+               "color_ssim": None, "color_rmse": None}
+
+
+def score_capture(method: Dict, reference: Dict, *,
+                  compute_ssim: bool = True) -> Dict[str, Dict]:
     """Full accuracy report of a method capture vs a reference capture.
 
     Both dicts must come from ``GPURunner.capture`` (same resolution/camera).
+
+    ``compute_ssim=False`` skips the three skimage SSIMs + PNG encodes — the
+    expensive CPU work — and is the **cheap** scoring path for the parameter
+    grid (SWEEP_PLAN §H): IoU (primary) + depth/normal are still computed since
+    they're cheap numpy. The SSIM keys are present but ``None``.
 
     Returns the primary/secondary/tertiary hierarchy (see module docstring) plus
     legacy flat keys for back-compat.
@@ -111,7 +121,7 @@ def score_capture(method: Dict, reference: Dict) -> Dict[str, Dict]:
     hit = _hit_metrics(method["hit"], reference["hit"])
     depth = _depth_metrics(method, reference)
     normal = _normal_angle_error(method, reference)
-    ssim_scores = _ssim_scores(method, reference)
+    ssim_scores = _ssim_scores(method, reference) if compute_ssim else dict(_EMPTY_SSIM)
     return {
         # explicit hierarchy
         "primary": hit,                                   # IoU + false hit/miss

@@ -34,15 +34,17 @@ import numpy as np
 from .config import RenderConfig, MarchConfig
 from .gpu.runner import GPURunner
 from .gpu.groundtruth import (
-    _resolve_scene, reference_render_config,
+    _resolve_scene,
     dense_march_config, dense_march_params, DENSE_MARCH_STRATEGY_ID, DENSE_MIN_STEP,
 )
 from .metrics.scoring import score_capture
 from .data.dataset import JsonlDataset
 from .data.provenance import provenance, config_hash
+from .viewpoints import viewpoints_for
+from .param_grid import param_combos, param_label
 
 
-DEFAULT_SCENES = ["Sphere", "Grazing Plane", "Thin Torus", "Mandelbulb"]
+DEFAULT_SCENES = ["Sphere", "Grazing Plane", "Cube", "Thin Torus", "Mandelbulb"]
 DEFAULT_BUDGETS = [32, 64, 128, 256, 512]
 # Matched-residual axis (SWEEP_PLAN §B): march every method to the same
 # closeness-to-surface epsilon (= hit_threshold) under a fixed high iteration
@@ -126,12 +128,13 @@ def build_levels(mode: str, *, budgets: List[int], epsilons: List[float],
 
 
 def measure_ms(runner: GPURunner, scene_id: int, sid: int, rc: RenderConfig,
-               mc: MarchConfig, lip: float, warmup: int, repeats: int) -> Dict[str, float]:
+               mc: MarchConfig, lip: float, warmup: int, repeats: int,
+               params: Dict = None) -> Dict[str, float]:
     for _ in range(warmup):
-        runner.render(scene_id, sid, rc, mc, lipschitz=lip)
+        runner.render(scene_id, sid, rc, mc, lipschitz=lip, params=params)
     ts = []
     for _ in range(repeats):
-        _, t = runner.render(scene_id, sid, rc, mc, lipschitz=lip)
+        _, t = runner.render(scene_id, sid, rc, mc, lipschitz=lip, params=params)
         ts.append(t * 1000.0)
     ts.sort()
     return {"ms_median": float(statistics.median(ts)),
@@ -140,115 +143,143 @@ def measure_ms(runner: GPURunner, scene_id: int, sid: int, rc: RenderConfig,
 
 def run_sweep(out_path: str, scene_names: List[str],
               levels: List[Tuple[float, MarchConfig, Dict]],
-              res: int, warmup: int, repeats: int, *, mode: str = "budget") -> None:
+              res: int, warmup: int, repeats: int, *, mode: str = "budget",
+              grid: bool = False, full_score: bool = False,
+              flush_every: int = 25) -> None:
+    """Sweep scene x viewpoint x strategy x level [x param-combo].
+
+    ``grid`` brute-forces each strategy's tunable params (param_grid.py) — the
+    "fair shot" / sensitivity grid. ``full_score`` computes the expensive SSIM
+    (off by default for the grid; IoU + depth are always computed). Rows are
+    written in batches of ``flush_every`` for grid-scale I/O.
+    """
     runner = GPURunner()
     prov = provenance(runner.gpu_info())
     ds = JsonlDataset(out_path)
 
-    # Pre-capture references once per scene (cached for all budgets/strategies).
-    refs: Dict[str, Dict] = {}
-    scene_meta: Dict[str, Tuple[int, object, RenderConfig, float]] = {}
-    print(f"Capturing {len(scene_names)} references @ {res}²...")
+    # Pre-capture a dense-march reference per (scene, viewpoint). Validated to
+    # ~1e-7 depth / IoU 1.0 on analytic scenes — not v1's plain high-budget trace.
+    refs: Dict[Tuple[str, str], Dict] = {}
+    units: List[Tuple[str, object, int, object, RenderConfig, float]] = []
+    print(f"Capturing references @ {res}² (scene x viewpoint)...")
     for name in scene_names:
         scene_id, scene = _resolve_scene(name)
         if scene is None:
             print(f"  [skip] unknown scene {name!r}")
             continue
-        rc = reference_render_config(scene, res, res)
         lip = scene.known_lipschitz_bound()
-        # Score against the calibrated dense-march oracle (validated to ~1e-7
-        # depth / IoU 1.0 on analytic scenes), not v1's plain high-budget trace.
-        refs[name] = runner.capture(scene_id, DENSE_MARCH_STRATEGY_ID, rc,
-                                    dense_march_config(), lipschitz=lip,
-                                    params=dense_march_params())
-        scene_meta[name] = (scene_id, scene, rc, lip)
+        for vp in viewpoints_for(scene):
+            rc = vp.render_config(res, res)
+            refs[(name, vp.name)] = runner.capture(
+                scene_id, DENSE_MARCH_STRATEGY_ID, rc, dense_march_config(),
+                lipschitz=lip, params=dense_march_params())
+            units.append((name, vp, scene_id, scene, rc, lip))
 
-    combos = [(n, sid, lbl, lvl) for n in scene_meta
-              for (sid, lbl) in STRATEGIES for lvl in levels]
-    total = len(combos)
+    # Strategy x param-combo x level (param-combo collapses to {} unless --grid).
+    strat_units: List[Tuple[int, str, Dict, Tuple]] = []
+    for (sid, lbl) in STRATEGIES:
+        pcombos = list(param_combos(sid)) if grid else [{}]
+        for params in pcombos:
+            for lvl in levels:
+                strat_units.append((sid, lbl, params, lvl))
+
+    total = len(units) * len(strat_units)
     done = skipped = errors = 0
+    buffer: List[Dict] = []
     t0 = time.time()
-    print(f"Sweep[{mode}]: {total} runs ({len(scene_meta)} scenes x "
-          f"{len(STRATEGIES)} strategies x {len(levels)} levels)")
+    print(f"Sweep[{mode}{'+grid' if grid else ''}]: {total} runs "
+          f"({len(units)} scene-views x {len(strat_units)} strategy/param/level "
+          f"combos){'  [SSIM on]' if full_score else '  [SSIM off]'}")
     print(f"Resuming dataset with {len(ds)} existing rows -> {out_path}\n")
 
-    for i, (name, sid, label, level) in enumerate(combos):
-        level_value, mc, extra = level
-        scene_id, scene, rc, lip = scene_meta[name]
-        config = {
-            "scene": name,
-            "scene_category": scene.category,
-            "strategy": label,
-            "strategy_id": sid,
-            "backend": "gpu",
-            "resolution": res,
-            "reference": REFERENCE_TAG,
-            **extra,
-        }
-        ch = config_hash(config)
-        if ds.has(ch):
-            skipped += 1
-            continue
-
-        cap_iters = int(extra["max_iterations"])
-        try:
-            timing = measure_ms(runner, scene_id, sid, rc, mc, lip, warmup, repeats)
-            cap = runner.capture(scene_id, sid, rc, mc, lipschitz=lip)
-            sc = score_capture(cap, refs[name])
-            iter_ratio = cap["geom"][..., 1]
-            iters = iter_ratio * cap_iters
-            # A ray that exhausts the iteration cap without a hit did NOT reach
-            # epsilon — the matched-residual "did-not-converge" signal.
-            maxed = iter_ratio >= 0.999
-            dnc = float(np.logical_and(maxed, ~cap["hit"]).mean())
-            row = {
-                "config_hash": ch,
-                "status": "ok",
-                "config": config,
-                "provenance": prov,
-                "perf": {
-                    # Three cost axes (never collapse to one — they disagree):
-                    #  ms_*            : GPU wall-clock (GL timer) — hardware cost
-                    #  evals           : SDF evaluations / ray — workload, but an
-                    #                    eval is NOT constant-cost across methods,
-                    #                    so this under-charges adaptive/relaxed
-                    #                    methods; always read it next to ms.
-                    #  iter_divergence : neighbor iteration spread — efficiency;
-                    #                    explains eval-vs-ms rank disagreements.
-                    **timing,
-                    "iter": _dist(iters),
-                    "evals": _dist(cap["evals"]),
-                    "iter_divergence": _divergence_proxy(iters),
-                    "did_not_converge": dnc,
-                },
-                "accuracy": {
-                    "hit_rate": float(cap["hit"].mean()),
-                    "false_hit": sc["hit"]["false_hit_rate"],
-                    "false_miss": sc["hit"]["false_miss_rate"],
-                    "iou": sc["hit"]["iou"],
-                    "depth_rmse": sc["depth"]["rmse"],
-                    "depth_p95": sc["depth"]["p95"],
-                    "normal_deg": sc["normal"]["mean_deg"],
-                    "depth_ssim": sc["ssim"]["depth_ssim"],
-                    "normal_ssim": sc["ssim"]["normal_ssim"],
-                    "color_ssim": sc["ssim"]["color_ssim"],
-                },
+    i = 0
+    for (name, vp, scene_id, scene, rc, lip) in units:
+        ref = refs[(name, vp.name)]
+        for (sid, label, params, level) in strat_units:
+            i += 1
+            level_value, mc, extra = level
+            config = {
+                "scene": name,
+                "scene_category": scene.category,
+                "viewpoint": vp.name,
+                "view_category": vp.category,
+                "strategy": label,
+                "strategy_id": sid,
+                "params": param_label(params),
+                "backend": "gpu",
+                "resolution": res,
+                "reference": REFERENCE_TAG,
+                **extra,
             }
-            ds.append(row)
-            done += 1
-        except Exception as e:
-            ds.append({"config_hash": ch, "status": "error", "config": config,
-                       "provenance": prov, "error": f"{type(e).__name__}: {e}"})
-            errors += 1
+            ch = config_hash(config)
+            if ds.has(ch):
+                skipped += 1
+                continue
 
-        if (i + 1) % 10 == 0 or (i + 1) == total:
-            el = time.time() - t0
-            rate = (done + errors) / el if el > 0 else 0
-            remaining = total - skipped - done - errors
-            eta = remaining / rate if rate > 0 else 0
-            print(f"  [{i+1:4d}/{total}] done={done} skip={skipped} err={errors} "
-                  f"| {rate:.1f}/s ETA {eta:5.0f}s")
+            cap_iters = int(extra["max_iterations"])
+            try:
+                timing = measure_ms(runner, scene_id, sid, rc, mc, lip,
+                                    warmup, repeats, params=params)
+                cap = runner.capture(scene_id, sid, rc, mc, lipschitz=lip, params=params)
+                sc = score_capture(cap, ref, compute_ssim=full_score)
+                iter_ratio = cap["geom"][..., 1]
+                iters = iter_ratio * cap_iters
+                # A ray that exhausts the cap unhit did NOT reach epsilon — the
+                # matched-residual "did-not-converge" signal.
+                maxed = iter_ratio >= 0.999
+                dnc = float(np.logical_and(maxed, ~cap["hit"]).mean())
+                row = {
+                    "config_hash": ch,
+                    "status": "ok",
+                    "config": config,
+                    "provenance": prov,
+                    "perf": {
+                        # Three cost axes (never collapsed — they disagree):
+                        #  ms_*            : GPU wall-clock (GL timer) — hardware
+                        #  evals           : SDF evals/ray — workload; an eval is
+                        #                    NOT constant-cost, so this under-
+                        #                    charges adaptive methods (read w/ ms)
+                        #  iter_divergence : neighbor iteration spread — efficiency
+                        **timing,
+                        "iter": _dist(iters),
+                        "evals": _dist(cap["evals"]),
+                        "iter_divergence": _divergence_proxy(iters),
+                        "did_not_converge": dnc,
+                    },
+                    "accuracy": {
+                        "hit_rate": float(cap["hit"].mean()),
+                        "false_hit": sc["hit"]["false_hit_rate"],
+                        "false_miss": sc["hit"]["false_miss_rate"],
+                        "iou": sc["hit"]["iou"],
+                        "depth_rmse": sc["depth"]["rmse"],
+                        "depth_p95": sc["depth"]["p95"],
+                        "normal_deg": sc["normal"]["mean_deg"],
+                        "depth_ssim": sc["ssim"]["depth_ssim"],
+                        "normal_ssim": sc["ssim"]["normal_ssim"],
+                        "color_ssim": sc["ssim"]["color_ssim"],
+                    },
+                }
+                buffer.append(row)
+                done += 1
+            except Exception as e:
+                buffer.append({"config_hash": ch, "status": "error", "config": config,
+                               "provenance": prov, "error": f"{type(e).__name__}: {e}"})
+                errors += 1
 
+            if len(buffer) >= flush_every:
+                ds.extend(buffer)
+                buffer.clear()
+
+            if i % 25 == 0 or i == total:
+                el = time.time() - t0
+                rate = (done + errors) / el if el > 0 else 0
+                remaining = total - skipped - done - errors
+                eta = remaining / rate if rate > 0 else 0
+                print(f"  [{i:5d}/{total}] done={done} skip={skipped} err={errors} "
+                      f"| {rate:.1f}/s ETA {eta:5.0f}s")
+
+    if buffer:
+        ds.extend(buffer)
     print(f"\nFinished: {done} new, {skipped} skipped, {errors} errors -> {out_path}")
 
 
@@ -270,6 +301,12 @@ def main(argv=None) -> int:
                    help="Fixed epsilon for --mode budget.")
     p.add_argument("--warmup", type=int, default=3)
     p.add_argument("--repeats", type=int, default=8)
+    p.add_argument("--grid", action="store_true",
+                   help="Brute-force each strategy's tunable params (param_grid.py).")
+    p.add_argument("--full-score", action="store_true",
+                   help="Also compute SSIM (expensive). Off by default; IoU+depth always on.")
+    p.add_argument("--flush-every", type=int, default=25,
+                   help="JSONL batch size (crash granularity).")
     args = p.parse_args(argv)
 
     scene_names = [s.strip() for s in args.scenes.split(",") if s.strip()]
@@ -278,7 +315,8 @@ def main(argv=None) -> int:
     levels = build_levels(args.mode, budgets=budgets, epsilons=epsilons,
                           cap=args.cap, hit_threshold=args.hit_threshold)
     run_sweep(args.out, scene_names, levels, args.res, args.warmup, args.repeats,
-              mode=args.mode)
+              mode=args.mode, grid=args.grid, full_score=args.full_score,
+              flush_every=args.flush_every)
     return 0
 
 

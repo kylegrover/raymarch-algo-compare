@@ -112,6 +112,7 @@ class GPURunner:
         # Segment-tracing tuning (sensible defaults)
         set_uniform('kappa', 2.0)
         set_uniform('beta', 0.3)
+        set_uniform('margin', 0.05)   # skipping-spheres SDF fattening
         # minStep: honor configured min_step_fraction but stay >= hitThreshold
         min_step = max(march_cfg.hit_threshold, march_cfg.min_step_fraction * march_cfg.max_distance)
         set_uniform('minStep', float(min_step))
@@ -229,6 +230,7 @@ class GPURunner:
         set_uniform('lipschitz', lipschitz)
         set_uniform('kappa', 2.0)
         set_uniform('beta', 0.3)
+        set_uniform('margin', 0.05)   # skipping-spheres SDF fattening
         min_step = max(march_cfg.hit_threshold, march_cfg.min_step_fraction * march_cfg.max_distance)
         set_uniform('minStep', float(min_step))
         set_uniform('stepScale', 1.0)

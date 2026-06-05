@@ -45,6 +45,24 @@ class JsonlDataset:
         if ch:
             self._done.add(ch)
 
+    def extend(self, rows: List[Dict]) -> None:
+        """Append a batch of rows in a single open/flush (grid-scale I/O, §H).
+
+        Crash granularity is the batch size, so callers should pick a flush
+        interval that balances throughput against how much work they're willing
+        to redo on an interrupt.
+        """
+        if not rows:
+            return
+        with open(self.path, "a", encoding="utf-8") as f:
+            for row in rows:
+                f.write(json.dumps(row) + "\n")
+            f.flush()
+        for row in rows:
+            ch = row.get("config_hash")
+            if ch:
+                self._done.add(ch)
+
     @staticmethod
     def load(path: str) -> List[Dict]:
         rows: List[Dict] = []

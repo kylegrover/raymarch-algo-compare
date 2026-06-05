@@ -215,11 +215,17 @@ re-run against the improved oracle + matched-residual + safe variants:
     1.7× the GPU ms — eval-count under-charges adaptive tracers; `iter_divergence`
     explains the eval-vs-ms rank flips. Three axes reported, never collapsed.
 
-**Phase 5 — Parameterization, viewpoints, scale**
-5.1 Thread tuning params as uniforms (un-hardcode ω / growth / margin).
-5.2 Curated multi-viewpoint categories + per-view references; add more scenes.
-5.3 Full parameter grid; cheap-vs-scored run split; Pareto-only image persistence;
-    batched writes.
+**Phase 5 — Parameterization, viewpoints, scale — DONE**
+5.1 ✅ ω / κ / fattening `margin` are uniforms threaded via `params=`; runner sets
+    defaults so none default to 0. Per-strategy `param_grid.py` registry (name→grid,
+    first = default) drives the brute-force grid.
+5.2 ✅ `viewpoints.py`: curated categorized viewpoints (orthogonal/grazing/macro)
+    per core scene with a per-view dense-march reference; default fallback for the
+    rest. Sweep iterates scene×viewpoint; default scene set widened to include Cube.
+5.3 ✅ Full grid via `sweep.py --grid` (scene×viewpoint×strategy×level×param-combo);
+    cheap-vs-scored split (`--full-score`; IoU+depth always, SSIM opt-in); batched
+    JSONL writes (`--flush-every`, `JsonlDataset.extend`). Per-run images: N/A — the
+    sweep is JSONL-only, so "Pareto-only persistence" is already satisfied.
 
 **Phase 6 — Discovery**
 6.1 Per-run scene/ray feature extraction + storage.
