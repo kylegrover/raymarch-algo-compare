@@ -151,32 +151,55 @@ class IVec3:
 
 
 # ──────────────────────────────────────────────────────────────────────────────
-# Interval extensions of the metric primitives — structurally identical to
-# scenes/primitives.py so the extension *is* the natural interval extension.
+# Metric primitive SDFs — structurally identical to scenes/primitives.py so the
+# extension *is* the natural extension. Written against component objects (any
+# type exposing square/sqrt/abs/max0/min0/maximum/minimum and +,-,* with a
+# scalar): this single source is shared by the interval oracle (Interval
+# components) and the interval-autodiff segment tracer (dual-interval components).
 # ──────────────────────────────────────────────────────────────────────────────
 
-def i_sphere(p: IVec3, radius: float) -> Interval:
-    return p.length() - radius
+def _length3(x, y, z):
+    return (x.square() + y.square() + z.square()).sqrt()
 
 
-def i_plane(p: IVec3, normal, offset: float) -> Interval:
-    return p.dot(normal) - offset
+def _sd_sphere(x, y, z, radius):
+    return _length3(x, y, z) - radius
 
 
-def i_box(p: IVec3, half) -> Interval:
-    # q = |p| - half ;  outside = length(max(q,0)) ;  inside = min(max(qx,qy,qz),0)
-    q = IVec3(p.x.abs() - float(half[0]),
-              p.y.abs() - float(half[1]),
-              p.z.abs() - float(half[2]))
-    outside = IVec3(q.x.max0(), q.y.max0(), q.z.max0()).length()
-    inside = q.x.maximum(q.y).maximum(q.z).min0()
+def _sd_plane(x, y, z, normal, offset):
+    return x * float(normal[0]) + y * float(normal[1]) + z * float(normal[2]) - offset
+
+
+def _sd_box(x, y, z, half):
+    qx = x.abs() - float(half[0])
+    qy = y.abs() - float(half[1])
+    qz = z.abs() - float(half[2])
+    outside = _length3(qx.max0(), qy.max0(), qz.max0())
+    inside = qx.maximum(qy).maximum(qz).min0()
     return outside + inside
 
 
+def _sd_torus(x, y, z, major_radius, minor_radius):
+    q_xz = (x.square() + z.square()).sqrt() - major_radius
+    return (q_xz.square() + y.square()).sqrt() - minor_radius
+
+
+# Interval-typed wrappers (the oracle calls these via IVec3).
+
+def i_sphere(p: IVec3, radius: float) -> Interval:
+    return _sd_sphere(p.x, p.y, p.z, radius)
+
+
+def i_plane(p: IVec3, normal, offset: float) -> Interval:
+    return _sd_plane(p.x, p.y, p.z, normal, offset)
+
+
+def i_box(p: IVec3, half) -> Interval:
+    return _sd_box(p.x, p.y, p.z, half)
+
+
 def i_torus(p: IVec3, major_radius: float, minor_radius: float) -> Interval:
-    # q_xz = sqrt(px^2 + pz^2) - R ;  return sqrt(q_xz^2 + py^2) - r
-    q_xz = (p.x.square() + p.z.square()).sqrt() - major_radius
-    return (q_xz.square() + p.y.square()).sqrt() - minor_radius
+    return _sd_torus(p.x, p.y, p.z, major_radius, minor_radius)
 
 
 # ── registry (mirrors gpu/analytic.ANALYTIC_SCENES) ──────────────────────────
@@ -186,6 +209,15 @@ INTERVAL_SCENES: Dict[str, Callable[[IVec3], Interval]] = {
     "Grazing Plane": lambda p: i_plane(p, (0.0, 1.0, 0.0), -0.5),
     "Cube": lambda p: i_box(p, (1.0, 1.0, 1.0)),
     "Thin Torus": lambda p: i_torus(p, 1.5, 0.05),
+}
+
+#: Type-agnostic component SDFs (x, y, z component objects -> value). Shared by
+#: the interval-autodiff segment tracer so it traces the *identical* surface.
+COMPONENT_SCENES: Dict[str, Callable] = {
+    "Sphere": lambda x, y, z: _sd_sphere(x, y, z, 1.0),
+    "Grazing Plane": lambda x, y, z: _sd_plane(x, y, z, (0.0, 1.0, 0.0), -0.5),
+    "Cube": lambda x, y, z: _sd_box(x, y, z, (1.0, 1.0, 1.0)),
+    "Thin Torus": lambda x, y, z: _sd_torus(x, y, z, 1.5, 0.05),
 }
 
 

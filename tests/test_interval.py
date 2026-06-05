@@ -16,7 +16,9 @@ from raymarching_benchmark.gpu.interval import (
     Interval, IVec3, INTERVAL_SCENES, i_sphere, i_box, i_torus, i_plane,
 )
 from raymarching_benchmark.gpu.interval_oracle import first_hit, _scalar_sdf
-from raymarching_benchmark.gpu.analytic import ANALYTIC_SCENES
+from raymarching_benchmark.gpu.interval_autodiff import seed_segment
+from raymarching_benchmark.gpu.interval import COMPONENT_SCENES
+from raymarching_benchmark.gpu.analytic import ANALYTIC_SCENES, _normalize
 
 SCENES = ["Sphere", "Grazing Plane", "Cube", "Thin Torus"]
 
@@ -115,3 +117,29 @@ def test_first_hit_matches_analytic_batch(scene_name):
     if both.any():
         derr = np.max(np.abs(t_iv[both] - depth_a[both]))
         assert derr < 1e-3, f"{scene_name}: depth err {derr:.2e}"
+
+
+@pytest.mark.parametrize("scene_name", SCENES)
+def test_autodiff_encloses_directional_derivative(scene_name):
+    """The autodiff `der` interval must enclose the true g'(τ) everywhere on the
+    segment — the soundness the faithful segment tracer's K bound relies on."""
+    comp = COMPONENT_SCENES[scene_name]
+    rng = np.random.default_rng(7)
+    for _ in range(50):
+        ro = rng.uniform(-3.0, 3.0, size=3)
+        rd = _normalize(rng.uniform(-1.0, 1.0, size=(1, 3)), axis=-1)[0]
+        t0 = rng.uniform(0.0, 2.0)
+        t1 = t0 + rng.uniform(0.05, 1.0)
+        X, Y, Z = seed_segment(ro, rd[None, :], np.array([t0]), np.array([t1]))
+        d = comp(X, Y, Z)
+        der_lo = float(np.ravel(d.der.lo)[0])
+        der_hi = float(np.ravel(d.der.hi)[0])
+
+        taus = np.linspace(t0, t1, 40)
+        eps = 1e-6
+        P_plus = ro[None, :] + (taus + eps)[:, None] * rd[None, :]
+        P_minus = ro[None, :] + (taus - eps)[:, None] * rd[None, :]
+        gp = (_scalar_sdf(scene_name, P_plus) - _scalar_sdf(scene_name, P_minus)) / (2 * eps)
+        tol = 1e-3
+        assert np.all(gp >= der_lo - tol) and np.all(gp <= der_hi + tol), \
+            f"{scene_name}: g' in [{gp.min():.3f},{gp.max():.3f}] escaped [{der_lo:.3f},{der_hi:.3f}]"
