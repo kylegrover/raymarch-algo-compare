@@ -63,6 +63,32 @@ _CURATED = {
         Viewpoint("macro", "macro", (0.0, 0.0, 1.9)),
         Viewpoint("angled", "orthogonal", (2.0, 1.4, 2.0)),
     ],
+    # ── Phase 6 expansion: Python≡GLSL-verified scenes, multi-angle. ──────────
+    "Cylinder": [   # r=1, half-height=1.5, axis=Y → sharp circular cap edges
+        Viewpoint("side", "orthogonal", (0.0, 0.0, 4.2)),
+        Viewpoint("cap-grazing", "grazing", (3.6, 1.55, 0.6)),   # skim the top edge
+        Viewpoint("macro", "macro", (0.0, 0.0, 2.4)),
+    ],
+    "Near Miss": [  # two r=1 spheres at x=±1.01 → pinched gap
+        Viewpoint("ortho", "orthogonal", (0.0, 0.0, 5.2)),
+        Viewpoint("gap-grazing", "grazing", (0.0, 2.6, 4.4), (0.0, 0.0, 0.0)),
+        Viewpoint("macro-gap", "macro", (0.0, 0.0, 3.0)),
+    ],
+    "Hollow Cube (CSG)": [  # box(1) − sphere(1.3): concave spherical bites
+        Viewpoint("face", "orthogonal", (0.0, 0.0, 4.0)),
+        Viewpoint("corner", "orthogonal", (2.4, 2.0, 2.6)),
+        Viewpoint("grazing-face", "grazing", (3.4, 0.0, 0.5)),
+    ],
+    "Onion Shell": [  # nested thin shells of a sphere (~r=2.15 outer)
+        Viewpoint("ortho", "orthogonal", (0.0, 0.0, 5.4)),
+        Viewpoint("grazing", "grazing", (0.0, 0.55, 5.4), (0.0, 0.0, 0.0)),
+        Viewpoint("macro", "macro", (0.0, 0.0, 3.2)),
+    ],
+    "Thin Planes Stack": [  # repeated 0.01-thick shells, spacing 0.5 → tunneling
+        Viewpoint("ortho", "orthogonal", (0.0, 0.25, 5.0), (0.0, 0.25, 0.0)),
+        Viewpoint("grazing", "grazing", (0.0, 0.12, 6.2), (0.0, 0.05, 0.0)),
+        Viewpoint("edge", "orthogonal", (3.0, 0.25, 4.0), (0.0, 0.25, 0.0)),
+    ],
 }
 
 

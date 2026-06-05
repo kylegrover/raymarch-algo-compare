@@ -277,6 +277,40 @@ broken off the plane** (Thin-Torus IoU 0.003); eval-count ≠ ms (Enhanced); the
     have features but no grid rows (Cylinder/CSG/Onion/Menger/Pillars/…). Widening
     the grid to them is the cheap, high-leverage next step.
 
+6.5 **Overnight grid expansion — PLANNED.** Widen from 5 → **10 scenes** to give
+    6.2 real geometric/winner diversity. Only scenes whose **Python SDF ≡ GLSL SDF**
+    are admitted — features come from the Python SDF but the grid scores the GLSL
+    render, so a mismatch silently invalidates the join. Verified-consistent set
+    (10): Sphere, Grazing Plane, Cube, Thin Torus, Mandelbulb, **Cylinder, Near
+    Miss, Hollow Cube (CSG), Onion Shell, Thin Planes Stack**. The 5 new scenes
+    each got 3 curated viewpoints (`viewpoints.py`); all 15 verified to frame
+    geometry (hit-rate > 0.2) and to add regimes — Hollow-Cube thin CSG walls
+    (thin≈0.04), Thin-Planes grazing+thin (grazing 0.42, thin 0.013).
+
+    Run (two invocations append to one resumable file; settings match the existing
+    N=3864 so its rows are reused, not re-run):
+    ```
+    S="Sphere,Grazing Plane,Cube,Thin Torus,Mandelbulb,Cylinder,Near Miss,Hollow Cube (CSG),Onion Shell,Thin Planes Stack"
+    uv run python -m raymarching_benchmark.sweep --mode budget   --grid --full-score --res 384 --out sweep_grid.jsonl --scenes "$S"
+    uv run python -m raymarching_benchmark.sweep --mode residual --grid --full-score --res 384 --out sweep_grid.jsonl --scenes "$S"
+    ```
+    Scale: ~29 scene-views × 276 rows = **~8k rows** (~4k new), ≈1–2 h on the 3090
+    at full-score. Then regenerate the join:
+    ```
+    uv run python -m raymarching_benchmark.report.features  --res 256 --out features.jsonl
+    uv run python -m raymarching_benchmark.report.discovery --cost evals --out discovery_by_evals.md
+    uv run python -m raymarching_benchmark.report.discovery --cost ms    --out discovery_by_ms.md
+    ```
+
+    **Deferred — needs Python↔GLSL SDF reconciliation before grid admission** (each
+    is currently a *different scene* in the two backends):
+    • Smooth Blend — different smooth-min (Python `h²k/4` vs GLSL `mix`-form).
+    • Menger — fold phase offset (Python `mod(p·s+1,2)` vs GLSL `mod(p·s,2)`).
+    • Bad Lipschitz — Python `×2` (overshoot test) vs GLSL `×0.1` (underestimate);
+      a *semantic* choice (which failure mode to test) — decide direction, sync both.
+    • Pillar Forest — radius/height differ + Python adds a floor plane, GLSL doesn't.
+    Reconcile (sync Python→GLSL, the rendered authority) then add to the run.
+
 ---
 
 ## Validation gates (must answer before trusting any number)
