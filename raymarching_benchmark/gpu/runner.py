@@ -131,14 +131,25 @@ class GPURunner:
         vbo = self.ctx.buffer(vertices)
         vao = self.ctx.simple_vertex_array(self.prog, vbo, 'in_vert')
         
-        # GPU render + timing (synchronous): ensure GPU work completes before readback
+        # Timing: prefer a GPU timer query (GL_TIME_ELAPSED) around *just* the
+        # dispatch — it excludes CPU dispatch/readback/scheduler jitter that
+        # swamps small budgets in a wall-clock measurement. Fall back to CPU
+        # wall-clock + finish() only if the query is unavailable.
+        gpu_q = None
+        try:
+            gpu_q = self.ctx.query(time=True)
+        except Exception:
+            gpu_q = None
+
         start = __import__('time').perf_counter()
-        vao.render(moderngl.TRIANGLE_STRIP)
-        # force completion to get an accurate GPU-side elapsed time
+        if gpu_q is not None:
+            with gpu_q:
+                vao.render(moderngl.TRIANGLE_STRIP)
+        else:
+            vao.render(moderngl.TRIANGLE_STRIP)
         try:
             self.ctx.finish()
         except Exception:
-            # fallback if finish() unavailable in the context
             pass
         end = __import__('time').perf_counter()
 
@@ -146,7 +157,11 @@ class GPURunner:
         data = self.fbo.read(components=4, dtype='f4')
         pixels = np.frombuffer(data, dtype='f4').reshape(height, width, 4)
 
-        render_time_s = end - start
+        if gpu_q is not None:
+            # .elapsed is GPU nanoseconds spent on the dispatch.
+            render_time_s = float(gpu_q.elapsed) / 1e9
+        else:
+            render_time_s = end - start
         return pixels, render_time_s
 
     def capture(self, scene_id: int, strategy_id: int,

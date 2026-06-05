@@ -148,7 +148,14 @@ def build_html(rows: List[Dict], metric: str) -> str:
     parts.append(f'<div class="meta">{html.escape(str(gpu))} · {res}² · '
                  f'metric: {html.escape(ACCURACY_LABELS.get(metric, metric))} · '
                  f'{len([r for r in rows if r.get("status")=="ok"])} runs · '
-                 'accuracy vs three cost axes (runtime / SDF evals / steps)</div></header>')
+                 'accuracy vs three cost axes (runtime / SDF evals / steps)</div>')
+    parts.append('<div class="meta" style="margin-top:6px;max-width:70ch">'
+                 '⚠ The three cost axes can <b>disagree</b>, and the disagreement is '
+                 'itself a result: an SDF eval is not constant-cost across methods, so '
+                 'eval-count under-charges adaptive/relaxed tracers — read it next to '
+                 'GPU wall-clock. Per-run <code>iter_divergence</code> (neighbor '
+                 'iteration spread) is why an eval-count winner can lose on-GPU.'
+                 '</div></header>')
 
     for scene in by_scene:
         sp = by_scene[scene]

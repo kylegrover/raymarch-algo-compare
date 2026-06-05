@@ -200,10 +200,20 @@ re-run against the improved oracle + matched-residual + safe variants:
     artifact. (Surfaced for Phase 4: Segment collapses on Thin Torus IoU 0.158 —
     *not* "≡ baseline"; needs its own re-exam, gate #3.)
 
-**Phase 4 — Fair cost + matched residual**
-4.1 GPU timer queries; keep eval count; add divergence/occupancy where available.
-4.2 Matched-residual driver (sweep ε, budget cap, "did-not-converge" flag).
-4.3 Eval-cost caveat for interval/segment methods.
+**Phase 4 — Fair cost + matched residual — DONE**
+4.1 ✅ GPU timer queries (`ctx.query(time=True)`, GL_TIME_ELAPSED) replace CPU
+    wall-clock in `runner.render` — dispatch-only, ~0.28 ms @ budget 64 with
+    median≈min. Eval count kept; added an `iter_divergence` proxy (neighbor
+    iteration spread) as the efficiency/warp-divergence axis.
+4.2 ✅ Matched-residual driver: `sweep.py --mode residual` sweeps ε (=hit_threshold)
+    under a fixed cap, recording cost (evals/ms/iters) + `did_not_converge`.
+    **Payoff:** reveals methods that no ε can rescue — Naive-Relaxed plateaus at
+    Thin-Torus IoU 0.668; **Segment *degrades* as ε→0** (0.56→0.14, dnc=0 → it's
+    confidently wrong, not out of budget). Refutes "interval ≡ baseline" (gate #3).
+4.3 ✅ Eval-cost caveat made empirical + surfaced in the report header: on Grazing
+    Plane @ ε=1e-4 Naive-Relaxed uses fewer evals than Standard (19 vs 23) but
+    1.7× the GPU ms — eval-count under-charges adaptive tracers; `iter_divergence`
+    explains the eval-vs-ms rank flips. Three axes reported, never collapsed.
 
 **Phase 5 — Parameterization, viewpoints, scale**
 5.1 Thread tuning params as uniforms (un-hardcode ω / growth / margin).
@@ -227,10 +237,12 @@ re-run against the improved oracle + matched-residual + safe variants:
    now scores against the dense march. (`gpu/oracle_calibration.py`.)
 2. ✅ **ANSWERED.** ids 2/5 = naive (post-hoc backup), relabeled "Naive-*"; id 8
    = Keinert safe. Thin-Torus IoU: naive 0.667 vs safe 1.000.
-3. ⏳ Partially: re-exam shows Segment is **far worse** than baseline on Thin
-   Torus (IoU 0.158) and Sphere (0.848) — *not* a null. Which axis / bug vs win
-   still to dissect (Phase 4).
-4. ⏳ Open — revisit budget crossovers now that scoring uses the trusted oracle.
+3. ✅ **ANSWERED.** Not a null: matched-residual shows Segment *degrades* as ε→0
+   on Thin Torus (IoU 0.56→0.14, dnc=0 → confidently wrong, a bug in its
+   extension/bracket on thin features), and it's far from baseline on Sphere too.
+   Definitely not "≡ baseline at lower cost."
+4. ⏳ Open — revisit budget crossovers now that scoring uses the trusted oracle
+   (the matched-residual axis is the cleaner lens; budget crossovers next).
 
 ---
 
