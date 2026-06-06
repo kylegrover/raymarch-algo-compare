@@ -1,0 +1,147 @@
+we're queueing up for an 'overnight' run, probably to be kicked off when i'm going to sleep
+
+see the last 6 or so commits, particularly the SWEEP_PLAN.md and recently updated 6.5 overnight grid plan section within it
+
+
+our last session ended like so:
+
+"â Clean: single main branch, in sync with origin/main. Let me update memory to  reflect the merged state and the expansion/perceptual work, then summarize.
+  Wrote 1 memory (ctrl+o to expand)
+
+â All three parts are done. Here's the summary.
+
+  1. Grid expansion + overnight plan (SWEEP_PLAN Â§6.5)
+
+  I widened the grid from 5 â 10 scenes â but only after catching a
+  correctness blocker that would have silently corrupted the discovery join:
+  features come from the Python SDF, the grid scores the GLSL render, so a
+  scene can only enter the grid if Python SDF â¡ GLSL SDF.
+
+  - Admitted (verified identical): the 5 current + Cylinder, Near Miss, Hollow
+  Cube, Onion Shell, Thin Planes â each given 3 curated viewpoints
+  (viewpoints.py), all 15 verified to frame geometry and add real regimes
+  (Hollow-Cube thin CSG walls, Thin-Planes grazing+thin).
+  - Deferred (real PythonâGLSL mismatches, documented): Smooth Blend
+  (different smooth-min), Menger (fold-phase offset), Bad Lipschitz (Ã2 vs
+  Ã0.1 â a semantic choice for you), Pillar (radius/height + floor). Each
+  needs reconciliation before admission.
+  - The overnight run (exact commands, ~8k rows, ~1â2 h, resumes into the
+  existing dataset) is written into Â§6.5, followed by the feature/discovery
+  regen commands. It's ready for you to kick off.
+
+  2. Perceptual A/B harness (report/perceptual_review.py â
+  perceptual_review.html)
+
+  This is the image-based hypothesis test you asked for. Per scene-view, every
+  method renders at the same wall-clock budget (each method's iteration count
+  is matched to Standard's ms at an anchor budget), shown as color / depth /
+  discontinuity (depth-Laplacian â your "least perceptually discontinuous"
+  made visible). The discovery-predicted winner is badged (â by ms and by
+  evals). Your job: rate which color render is most pleasing and which
+  discontinuity map is darkest, then check whether the â agrees. It already
+  exposes one honest artifact â Segment frequently can't spend the time budget
+  (terminates early, leaves IoU on the table), visible in each panel's ms.
+
+  Open perceptual_review.html (regenerable: report.perceptual_review --res N).
+  Hollow Cube shows â predictions until the overnight grid populates it.
+
+  3. Git â clean and pushed
+
+  main fast-forwarded through the whole interval-oracle + discovery line,
+  pushed to origin (origin/main = f1dea36), and both merged feature branches
+  deleted. Single clean main, in sync. (Earlier the push guard correctly
+  blocked me when you'd only authorized a local merge â this time you
+  explicitly asked, so it went through.)
+
+  What I need from you: open perceptual_review.html and give me your
+  subjective read â where does your eye disagree with the â? That's the signal
+  that the IoU/ms metric is missing something perceptual. And when you're
+  ready, launch the Â§6.5 overnight run (or tell me to, though it'll outlast
+  this session)."
+
+
+me: "everything visually seems to point towards Standard winning, but i'm          wondering if we're testing on too short of time spans or maybe too simple     of scenes? I want to make sure we're testing in a way that gives the other    methods a chance so we really shake out as much data as possible. I would     be surprised to find that Standard is really always the best, it feels to     me like the kleinert enhanced method should win in some if not many cases!    maybe this just requires our deeper grid test where we try a wider variety    of parameters and settings?"
+
+
+===============================================================================
+HANDOFF — NEXT AGENT (added end of the session above; read this part first)
+===============================================================================
+
+That session investigated the "does Standard always win?" question and changed
+the plan substantially. The summary pasted higher up in THIS file is STALE on
+the run spec — trust SWEEP_PLAN.md §6.5 (current) over anything above.
+
+--- THE ONE THING TO DO -------------------------------------------------------
+Run the deepened overnight grid exactly as written in SWEEP_PLAN.md §6.5, then
+regenerate the join. Commands are in §6.5; the key parameters:
+  * 13 scenes (NOT 10 — Menger reconciled + Sphere Cloud + Bumpy Sphere added)
+  * --res 512  (the first grid's res 384 was GPU-overhead-dominated; sub-ms
+    frames hid the adaptive-method wins — this is load-bearing, don't drop to 384)
+  * --budgets 32,64,128,256,512,1024,2048  (Mandelbulb/Menger don't converge by
+    512; the extra budgets are why)
+  * --grid --full-score, BOTH --mode budget AND --mode residual into ONE file
+  * OUTPUT FILE: sweep_grid512.jsonl  (a FRESH grid — res change busts the
+    config_hash, so it does NOT resume the old sweep_grid.jsonl. Do not point it
+    at the old file expecting a resume; it would just re-run everything anyway.)
+  * Expect ~13k rows, several hours on the 3090. It IS resumable mid-run if it
+    dies (re-run the same command; config_hash skips done cells).
+
+--- WHAT THE RUN IS FOR (the hypothesis to confirm/refute) --------------------
+Confirmed by direct measurement last session, now needs the full grid to map:
+Standard does NOT always win. Adaptive methods win where sphere-tracing is
+forced into MANY TINY STEPS — i.e. (a) GRAZING angles, (b) intricate/non-metric
+surfaces. NOT where evals are merely expensive (smooth metric scenes converge in
+~10 steps regardless of eval cost — that was the key negative result).
+Anchored facts the grid should reproduce at scale:
+  * Grazing Plane (extreme-grazing): Segment ~2.6x faster than Standard at equal
+    quality — CERTIFIABLE (metric, sound oracle). The cleanest win.
+  * Mandelbulb (ortho): Enhanced ~2.1x; Naive even faster at the lower bar.
+  * Bumpy Sphere: macro -> Naive-Relaxed ~1.85x at IoU 1.0; ortho -> Naive
+    TUNNELS (thin bumps) while Safe-Relaxed stays correct. Safe-vs-naive story.
+  * Thin Torus: Naive/Segment are "cap" (tunnel); Safe-Relaxed is the only
+    adaptive method that reaches quality. Standard wins on speed.
+
+--- HOW TO READ THE RESULTS (don't get fooled) --------------------------------
+After the run, regenerate features.jsonl then discovery (both --cost evals AND
+--cost ms — they disagree, that disagreement IS a finding). Then look at:
+  * discovery §5 "cost-to-converged-quality per method" — THE table. Shows, per
+    scene-view, every method's ms/evals to reach the per-view quality bar, ranked.
+    This is where you SEE adaptive methods winning the grazing/intricate views.
+  * discovery §1/§2 single-"winner" — useful but lossy; §5 is the honest lens.
+  * COST AXIS MATTERS: by evals Standard ~never wins; by ms it dominates the
+    cheap scenes. Always report both; never collapse them.
+  * ORACLE-NOISE TRAP: on Mandelbulb/Menger (fractal, unsound oracle ~0.98 ceiling)
+    IoU differences between converged methods are BELOW the oracle's trust floor.
+    Rank those by COST, not IoU. Treat fractal accuracy verdicts as provisional.
+
+--- GOTCHAS / INVARIANTS (violate these and the data is silently wrong) --------
+  * Python SDF must equal GLSL SDF for any scene in the grid (features use Python,
+    grid scores GLSL). All 13 verified to ~1e-7. If you ADD a scene, verify it the
+    same way (|Python sdf| at GLSL surface points ~1e-7) before trusting its join.
+  * STILL DEFERRED (Python<->GLSL mismatch — do NOT add to the grid without
+    reconciling first): Smooth Blend (smooth-min formula), Bad Lipschitz (x2 vs
+    x0.1 — a semantic choice, ask Kyle), Pillar Forest (radius/height + floor).
+  * Windows console: run with PYTHONUTF8=1 or long runs can die on cp1252.
+  * Generated outputs (sweep_grid*.jsonl, features.jsonl, discovery_*.md,
+    *.html) are gitignored — regenerable, don't commit them.
+
+--- VISUAL VALIDATION (Kyle's job, for after the run) -------------------------
+  * report/perceptual_review.py -> perceptual_review.html: equal-wall-clock A/B,
+    badges the metric-predicted winner. Use it to gut-check that the predicted
+    winner actually looks best / least banded. Hollow Cube & the new scenes will
+    populate their predictions once sweep_grid512.jsonl exists (point its --grid
+    at that file).
+  * report/visual_review.py -> interval_review.html: oracle soundness gut-check
+    (already passed for the metric scenes).
+
+--- STRETCH (only if the run + analysis land cleanly) -------------------------
+  * Reconcile the 3 deferred scenes and add them.
+  * A metric scene with PERVASIVE grazing crawl + expensive eval (e.g. a bumpy
+    floor viewed at extreme grazing like Grazing-Plane) would be the strongest
+    certifiable adaptive-win demonstration — we have grazing (Grazing Plane) and
+    expensive (clouds) separately but never both-pervasive in one sound scene.
+  * Wire §5 cost-to-quality into the discovery feature->winner correlation so the
+    "which feature predicts the winner" answer uses the noise-robust cost lens.
+
+Branches: everything is on main, pushed (origin/main). Working tree clean.
+Memory file MEMORY.md + discovery-feature-winner.md have the running context.
