@@ -23,4 +23,6 @@ discovery_*.md
 *.log
 # generated comparison / analysis reports
 *.html
+# ...except the hand-authored, shareable results page (with embedded renders)
+!findings_presentation.html
 .pytest_cache/
