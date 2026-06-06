@@ -129,6 +129,32 @@ float map_impl(vec3 p) {
         d=min(d,sdSphere(p-vec3(0.3400,-1.4500,0.1787),0.18));
         return d;
     }
+    if (sceneId == 16) { // Gyroid solid (1-Lipschitz scaled; clipped to ball)
+        vec3 q = p * 3.0;                       // FREQ
+        float g = sin(q.x) * cos(q.y)
+                + sin(q.y) * cos(q.z)
+                + sin(q.z) * cos(q.x);
+        float sheet = g / 10.392304845413264;   // / (FREQ * 2*sqrt(3))
+        float ball = sdSphere(p, 2.2);
+        return max(sheet, ball);
+    }
+    if (sceneId == 17) { // Capped Torus (open thin ring; sc = (sin 2, cos 2))
+        return sdCappedTorus(p, vec2(0.9092974268256817, -0.4161468365471424), 1.2, 0.2);
+    }
+    if (sceneId == 18) { // Finite box lattice (metric near-miss). round = floor(x+0.5)
+        vec3 cell = clamp(floor(p + 0.5), -2.0, 2.0);   // C=1.0, L=2
+        vec3 q = p - cell;
+        return sdBox(q, vec3(0.3));
+    }
+    if (sceneId == 19) { // Metaballs (canonical polynomial smin, k=0.45)
+        float d = sdSphere(p, 0.8);
+        d = opSmoothUnion(d, sdSphere(p - vec3( 1.0, 0.0, 0.0), 0.6), 0.45);
+        d = opSmoothUnion(d, sdSphere(p - vec3(-1.0, 0.0, 0.0), 0.6), 0.45);
+        d = opSmoothUnion(d, sdSphere(p - vec3( 0.0, 1.0, 0.0), 0.6), 0.45);
+        d = opSmoothUnion(d, sdSphere(p - vec3( 0.0,-1.0, 0.0), 0.6), 0.45);
+        d = opSmoothUnion(d, sdSphere(p - vec3( 0.0, 0.0, 1.0), 0.6), 0.45);
+        return d;
+    }
 
     return 1e10;
 }

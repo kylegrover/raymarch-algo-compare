@@ -480,6 +480,160 @@ class BumpySphereScene(SDFScene):
 
 
 # ──────────────────────────────────────────────
+# Scene 17: Gyroid solid (periodic curved surface, grazing-rich)
+# ──────────────────────────────────────────────
+
+class GyroidScene(SDFScene):
+    """A gyroid labyrinth { g(p) < 0 } clipped to a ball. The raw gyroid implicit
+    g = Σ sin·cos is NON-metric (|∇g| ≤ freq·2√3), so we divide by that bound to
+    get a conservative 1-Lipschitz under-estimator — zero on the surface, never
+    overshooting — which keeps the dense-march oracle sound. The draw is a smooth,
+    periodic, highly-curved surface with broad grazing walls: a regime no other
+    scene covers, and a clean test of whether grazing-rich curvature alone (cheap
+    eval) triggers an adaptive-tracer win. Mirrored verbatim in scenes.glsl (id 16).
+    """
+    FREQ = 3.0
+    LIP = FREQ * 2.0 * (3.0 ** 0.5)   # = 10.3923…, the gradient bound of g
+    RADIUS = 2.2
+
+    @property
+    def name(self): return "Gyroid"
+
+    @property
+    def description(self):
+        return "Gyroid labyrinth clipped to a ball. Smooth periodic curved surface; grazing-rich, metric."
+
+    @property
+    def category(self): return "periodic_surface"
+
+    def sdf(self, p: Vec3) -> float:
+        qx, qy, qz = self.FREQ * p.x, self.FREQ * p.y, self.FREQ * p.z
+        g = (math.sin(qx) * math.cos(qy)
+             + math.sin(qy) * math.cos(qz)
+             + math.sin(qz) * math.cos(qx))
+        sheet = g / self.LIP
+        ball = sd_sphere(p, self.RADIUS)
+        return max(sheet, ball)
+
+    def suggested_camera(self) -> Optional[RenderConfig]:
+        return RenderConfig(camera_position=(0.0, 0.0, 6.0), camera_target=(0.0, 0.0, 0.0))
+
+
+# ──────────────────────────────────────────────
+# Scene 18: Capped Torus (open thin ring)
+# ──────────────────────────────────────────────
+
+class CappedTorusScene(SDFScene):
+    """iq's open ("C"-shaped) torus: thin like Thin Torus but with an *open*
+    boundary edge, adding silhouette and a grazing-prone gap. Exact-ish metric
+    SDF (1-Lipschitz). Mirrored verbatim in scenes.glsl (id 17)."""
+
+    SC = (math.sin(2.0), math.cos(2.0))   # half-angle 2.0 rad → wide arc
+    RA = 1.2
+    RB = 0.2
+
+    @property
+    def name(self): return "Capped Torus"
+
+    @property
+    def description(self):
+        return "Open C-shaped torus. Thin feature with a boundary edge → extra silhouette + grazing."
+
+    @property
+    def category(self): return "thin_features"
+
+    def sdf(self, p: Vec3) -> float:
+        return sd_capped_torus(p, self.SC, self.RA, self.RB)
+
+    def suggested_camera(self) -> Optional[RenderConfig]:
+        return RenderConfig(camera_position=(0.0, 0.0, 4.5), camera_target=(0.0, 0.0, 0.0))
+
+
+# ──────────────────────────────────────────────
+# Scene 19: Finite Box Lattice (certifiable near-miss throughput)
+# ──────────────────────────────────────────────
+
+class BoxLatticeScene(SDFScene):
+    """A finite 5×5×5 grid of boxes via iq's limited domain repetition. Folding
+    by a per-cell-constant integer translation is distance-preserving, so this is
+    fully METRIC (oracle-sound) — the certifiable counterpart to the benched
+    Pillar Forest. Many near-miss rays thread the 0.4-wide gaps between boxes,
+    stressing empty-space traversal and silhouette. NOTE: rounding uses
+    floor(x+0.5), NOT round(), because GLSL round() breaks ties in an
+    implementation-defined direction (parity hazard). Mirrored in scenes.glsl
+    (id 18)."""
+
+    C = 1.0      # cell spacing
+    L = 2.0      # half-extent in cells → indices −2…2
+    BB = 0.3     # box half-size (0.6 wide, 0.4 gap)
+
+    @property
+    def name(self): return "Box Lattice"
+
+    @property
+    def description(self):
+        return "Finite 5×5×5 box grid (metric). Many near-miss rays through the gaps; throughput + silhouette."
+
+    @property
+    def category(self): return "near_miss"
+
+    def sdf(self, p: Vec3) -> float:
+        def cell(x: float) -> float:
+            r = math.floor(x / self.C + 0.5)        # deterministic round
+            r = max(-self.L, min(self.L, r))
+            return r
+        q = Vec3(p.x - self.C * cell(p.x),
+                 p.y - self.C * cell(p.y),
+                 p.z - self.C * cell(p.z))
+        return sd_box(q, Vec3(self.BB, self.BB, self.BB))
+
+    def suggested_camera(self) -> Optional[RenderConfig]:
+        return RenderConfig(camera_position=(0.0, 0.0, 7.0), camera_target=(0.0, 0.0, 0.0))
+
+
+# ──────────────────────────────────────────────
+# Scene 20: Metaballs (smooth-union blobs)
+# ──────────────────────────────────────────────
+
+class MetaballsScene(SDFScene):
+    """Six spheres fused with the canonical polynomial smin (now identical in
+    Python and GLSL — see op_smooth_union). smin under-estimates min(), so it
+    never overshoots → oracle-sound. Smooth-blend regime companion to the
+    un-deferred Smooth Blend. Mirrored verbatim in scenes.glsl (id 19)."""
+
+    K = 0.45
+    # (center, radius) — central blob + 5 lobes.
+    BALLS = [
+        ((0.0, 0.0, 0.0), 0.8),
+        ((1.0, 0.0, 0.0), 0.6),
+        ((-1.0, 0.0, 0.0), 0.6),
+        ((0.0, 1.0, 0.0), 0.6),
+        ((0.0, -1.0, 0.0), 0.6),
+        ((0.0, 0.0, 1.0), 0.6),
+    ]
+
+    @property
+    def name(self): return "Metaballs"
+
+    @property
+    def description(self):
+        return "Six spheres fused with polynomial smin. Smooth-union regime; metric (under-estimating)."
+
+    @property
+    def category(self): return "smooth"
+
+    def sdf(self, p: Vec3) -> float:
+        (cx, cy, cz), r = self.BALLS[0]
+        d = sd_sphere(op_translate(p, Vec3(cx, cy, cz)), r)
+        for (cx, cy, cz), r in self.BALLS[1:]:
+            d = op_smooth_union(d, sd_sphere(op_translate(p, Vec3(cx, cy, cz)), r), self.K)
+        return d
+
+    def suggested_camera(self) -> Optional[RenderConfig]:
+        return RenderConfig(camera_position=(0.0, 0.0, 5.0), camera_target=(0.0, 0.0, 0.0))
+
+
+# ──────────────────────────────────────────────
 # Scene registry
 # ──────────────────────────────────────────────
 
@@ -502,6 +656,10 @@ def get_all_scenes() -> List[SDFScene]:
         ThinPlanesScene(),
         SphereCloudScene(),
         BumpySphereScene(),
+        GyroidScene(),        # sceneId 16
+        CappedTorusScene(),   # sceneId 17
+        BoxLatticeScene(),    # sceneId 18
+        MetaballsScene(),     # sceneId 19
     ]
 
 

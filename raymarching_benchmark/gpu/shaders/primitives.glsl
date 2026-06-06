@@ -23,6 +23,14 @@ float sdTorus(vec3 p, float major, float minor) {
     return length(q) - minor;
 }
 
+// Open ("C"-shaped) torus, iq. Ring in xy-plane, hole along z;
+// sc = (sin(half_angle), cos(half_angle)) sets the arc opening.
+float sdCappedTorus(vec3 p, vec2 sc, float ra, float rb) {
+    p.x = abs(p.x);
+    float k = (sc.y * p.x > sc.x * p.y) ? dot(p.xy, sc) : length(p.xy);
+    return sqrt(dot(p, p) + ra * ra - 2.0 * ra * k) - rb;
+}
+
 float sdCapsule(vec3 p, vec3 a, vec3 b, float r) {
     vec3 pa = p - a, ba = b - a;
     float h = clamp(dot(pa, ba) / dot(ba, ba), 0.0, 1.0);

@@ -1,6 +1,6 @@
 @echo off
 REM ============================================================================
-REM  Overnight GPU grid run  (SWEEP_PLAN.md  6.5 -- the DEEPENED 13-scene plan)
+REM  Overnight GPU grid run  (SWEEP_PLAN.md  6.5 -- 18 scenes; +5 from scraps 2026-06-06)
 REM
 REM  Launched by Windows Task Scheduler at midnight, in the logged-in INTERACTIVE
 REM  session so it can acquire a GPU (WGL) context. NOTE: this same command hangs
@@ -16,7 +16,11 @@ cd /d "C:\Users\kyle\projects\glsl\raymarch-algo-compare"
 set PYTHONUTF8=1
 set PYTHONUNBUFFERED=1
 set "LOG=overnight_run.log"
-set "S=Sphere,Grazing Plane,Cube,Thin Torus,Mandelbulb,Cylinder,Near Miss,Hollow Cube (CSG),Onion Shell,Thin Planes Stack,Menger Sponge (iter=3),Sphere Cloud,Bumpy Sphere"
+REM  2026-06-06: +5 scenes pulled from the shadertoy scraps (Smooth Blend un-deferred
+REM  by the smin alignment; Gyroid/Capped Torus/Box Lattice/Metaballs are new). All
+REM  Python<->GLSL parity-checked (tests/test_scene_parity.py) and metric (oracle-sound).
+REM  Same output file => the sweep RESUMES and only computes the new scene-views.
+set "S=Sphere,Grazing Plane,Cube,Thin Torus,Mandelbulb,Cylinder,Near Miss,Hollow Cube (CSG),Onion Shell,Thin Planes Stack,Menger Sponge (iter=3),Sphere Cloud,Bumpy Sphere,Smooth Blend,Gyroid,Capped Torus,Box Lattice,Metaballs"
 
 echo === overnight sweep started %DATE% %TIME% === > "%LOG%"
 

@@ -99,6 +99,26 @@ _CURATED = {
         Viewpoint("macro", "macro", (0.0, 0.0, 2.6)),     # bumps fill frame, more limb
         Viewpoint("angled", "orthogonal", (3.2, 2.2, 3.2)),
     ],
+    "Gyroid": [  # labyrinth ∩ ball(2.2); broad curved grazing walls
+        Viewpoint("ortho", "orthogonal", (0.0, 0.0, 6.0)),
+        Viewpoint("grazing", "grazing", (5.6, 0.5, 1.8), (0.0, 0.0, 0.0)),  # skim the limb
+        Viewpoint("macro", "macro", (0.0, 0.0, 3.4)),                       # channels fill frame
+    ],
+    "Capped Torus": [  # ra=1.2 rb=0.2 ring in xy-plane, hole along z, open arc
+        Viewpoint("face", "orthogonal", (0.0, 0.0, 4.5)),
+        Viewpoint("grazing-edge", "grazing", (4.3, 0.4, 1.0)),              # skim the ring plane
+        Viewpoint("gap", "orthogonal", (0.0, 3.4, 3.2), (0.0, 0.0, 0.0)),   # look into the opening
+    ],
+    "Box Lattice": [  # 5×5×5 boxes, 0.6 wide, 0.4 gap; extent ±2.3
+        Viewpoint("ortho", "orthogonal", (0.0, 0.0, 7.0)),
+        Viewpoint("diagonal", "orthogonal", (5.5, 5.5, 5.5)),               # rays thread between boxes
+        Viewpoint("grazing-row", "grazing", (7.0, 0.35, 0.7)),             # skim a row of faces
+    ],
+    "Metaballs": [  # 6-sphere smin cluster, extent ~±1.6
+        Viewpoint("ortho", "orthogonal", (0.0, 0.0, 5.0)),
+        Viewpoint("macro", "macro", (0.0, 0.0, 3.0)),
+        Viewpoint("angled", "orthogonal", (3.0, 2.0, 3.0)),
+    ],
     "Menger Sponge (iter=3)": [  # reconciled Python≡GLSL; fractal, costly eval
         Viewpoint("ortho", "orthogonal", (0.0, 0.0, 4.0)),
         Viewpoint("corner", "orthogonal", (2.4, 2.0, 2.6)),

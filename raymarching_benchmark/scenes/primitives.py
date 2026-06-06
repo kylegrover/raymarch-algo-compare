@@ -38,6 +38,18 @@ def sd_capsule(p: Vec3, a: Vec3, b: Vec3, radius: float) -> float:
     closest = a + ab * t
     return (p - closest).length() - radius
 
+def sd_capped_torus(p: Vec3, sc: tuple, ra: float, rb: float) -> float:
+    """Open ("C"-shaped) torus, iq's exact-ish SDF. Ring in the xy-plane, hole
+    along z; ``sc = (sin(half_angle), cos(half_angle))`` sets the arc opening.
+    Mirrors GLSL sdCappedTorus verbatim (1-Lipschitz)."""
+    px = abs(p.x)
+    if sc[1] * px > sc[0] * p.y:
+        k = px * sc[0] + p.y * sc[1]      # dot(p.xy, sc)
+    else:
+        k = (px * px + p.y * p.y) ** 0.5  # length(p.xy)
+    return (p.x * p.x + p.y * p.y + p.z * p.z + ra * ra - 2.0 * ra * k) ** 0.5 - rb
+
+
 def sd_cone(p: Vec3, angle_rad: float, height: float) -> float:
     """Cone along Y axis, tip at origin, opening downward."""
     c = math.cos(angle_rad)
@@ -66,8 +78,12 @@ def op_intersect(d1: float, d2: float) -> float:
     return max(d1, d2)
 
 def op_smooth_union(d1: float, d2: float, k: float) -> float:
-    h = max(k - abs(d1 - d2), 0.0) / max(k, 1e-12)
-    return min(d1, d2) - h * h * k * 0.25
+    # Polynomial smin, mirroring GLSL opSmoothUnion EXACTLY (primitives.glsl).
+    # The two implementations previously disagreed (this was the quadratic
+    # h*h*k/4 form), which is why Smooth Blend was kept out of the grid; they
+    # are now byte-faithful so any smin-using scene is grid-eligible.
+    h = max(0.0, min(1.0, 0.5 + 0.5 * (d2 - d1) / k))
+    return (d2 * (1.0 - h) + d1 * h) - k * h * (1.0 - h)
 
 def op_smooth_subtract(d1: float, d2: float, k: float) -> float:
     return -op_smooth_union(-d1, d2, k)

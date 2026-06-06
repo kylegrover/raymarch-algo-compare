@@ -352,10 +352,29 @@ broken off the plane** (Thin-Torus IoU 0.003); eval-count ≠ ms (Enhanced); the
     ```
 
     **Still deferred — Python↔GLSL mismatch, reconcile before admitting:**
-    • Smooth Blend — different smooth-min (Python `h²k/4` vs GLSL `mix`-form).
     • Bad Lipschitz — Python `×2` (overshoot) vs GLSL `×0.1` (underestimate); a
       *semantic* choice (which failure mode to test) — decide direction, sync both.
     • Pillar Forest — radius/height differ + Python adds a floor plane, GLSL doesn't.
+      (Superseded in practice by **Box Lattice**, the certifiable-metric near-miss
+      scene below — Pillar's non-metric floor confound is no longer needed.)
+
+    **+5 scenes pulled from the shadertoy scraps (2026-06-06), all metric / oracle-
+    sound, all Python↔GLSL parity-checked by `tests/test_scene_parity.py`:**
+    • **Smooth Blend — NO LONGER DEFERRED.** Root cause was the smooth-min form;
+      `op_smooth_union` now uses the polynomial `mix`-form *identical* to GLSL
+      `opSmoothUnion`. Parity ~0 by construction.
+    • **Gyroid** (id 16) — gyroid labyrinth ∩ ball. The raw implicit is non-metric
+      (|∇g| ≤ freq·2√3); divided by that bound → conservative 1-Lipschitz under-
+      estimator (sound). New regime: smooth periodic curved surface, grazing-rich.
+    • **Capped Torus** (id 17) — iq open "C" torus: thin feature + open boundary edge.
+    • **Box Lattice** (id 18) — finite 5×5×5 box grid via limited domain repetition;
+      fully metric (folded-translate is distance-preserving). round = `floor(x+0.5)`,
+      NOT `round()` (GLSL ties are implementation-defined — parity hazard).
+    • **Metaballs** (id 19) — 6 spheres fused with the now-canonical polynomial smin.
+
+    Added to `run_overnight_sweep.bat` (18 scenes total); same output file ⇒ the
+    sweep resumes and computes only the new scene-views. GPU parity is exercised on
+    that next user-run (this agent session can't acquire a GPU context).
 
 ---
 
@@ -401,12 +420,13 @@ Ordered roughly by value-for-effort. Each is independent.
    actually clean, not just numerically close. This is the credibility gate before
    publishing any "adaptive beats Standard by N×" claim.
 
-2. **Reconcile the 3 deferred scenes → widen the grid.** Smooth Blend (smooth-min
-   form: Python `h²k/4` vs GLSL `mix`), Bad Lipschitz (Python `×2` overshoot vs
-   GLSL `×0.1` underestimate — a *semantic* choice: pick which failure mode to
-   test), Pillar Forest (radius/height + Python-only floor plane). They already
-   have 6.1 features but no grid rows (see the "no grid rows" note in the discovery
-   reports). Fix Python≡GLSL (verify |SDF| ~1e-7 at surface), add curated
+2. **Reconcile the 2 remaining deferred scenes → widen the grid.** ✅ Smooth Blend
+   resolved (smin aligned, 2026-06-06) and 4 new scraps-scenes added. Remaining:
+   Bad Lipschitz (Python `×2` overshoot vs GLSL `×0.1` underestimate — a *semantic*
+   choice: pick which failure mode to test), Pillar Forest (radius/height +
+   Python-only floor plane; arguably superseded by the new metric Box Lattice).
+   They already have 6.1 features but no grid rows (see the "no grid rows" note in
+   the discovery reports). Fix Python≡GLSL (verify |SDF| ~1e-7 at surface), add curated
    viewpoints, re-run §6.5. Bad-Lipschitz especially should stress the methods that
    assume a true distance.
 
