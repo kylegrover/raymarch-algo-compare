@@ -277,7 +277,38 @@ broken off the plane** (Thin-Torus IoU 0.003); eval-count ≠ ms (Enhanced); the
     have features but no grid rows (Cylinder/CSG/Onion/Menger/Pillars/…). Widening
     the grid to them is the cheap, high-leverage next step.
 
-6.5 **Overnight grid expansion — PLANNED (deepened).** Widen from 5 → **13 scenes**
+6.5 **Overnight grid expansion — ✅ DONE (2026-06-06).** Ran via the Windows
+    Task Scheduler task `RaymarchOvernightSweep` → `run_overnight_sweep.bat` (the
+    agent shell can't acquire a GPU/WGL context — must launch from the user's
+    interactive session). 02:00→03:09, **12,236 rows, 0 errors**, fresh
+    `sweep_grid512.jsonl`. Canonical tables regenerated into `FINDINGS.md`
+    (`report.analyze --in sweep_grid512.jsonl`); regime map in
+    `discovery_by_evals.md` / `discovery_by_ms.md` (gitignored, regen via
+    `report.discovery`). **Result — the headline reversal:**
+
+    - **Standard does NOT always win.** By GPU **ms**: Safe-Relaxed 13, Standard
+      13, Naive-Relaxed 9, Segment 2, Naive-Auto 1 (of 38 views). By **evals**:
+      Naive-Relaxed 15, Enhanced 14, Standard only **3**. The two cost axes
+      genuinely disagree — Enhanced wins the *workload* axis broadly but its
+      per-iteration ALU cost means it rarely wins *wall-clock*.
+    - **Wins track forced-small-steps, not eval cost** (the hypothesis, now
+      quantified). Top winner-separating feature is **`grazing_frac`** (norm.
+      spread 4.26 on ms), then **`hardness_cv`** (2.88). High → adaptive wins;
+      low → Standard. Anchored ms multipliers vs Standard: Grazing-Plane grazing
+      **Segment 2.4×** (certifiable); Mandelbulb·ortho **Naive 7.8×**; Thin-Planes
+      grazing **Safe 4.2×**; Sphere-Cloud·ortho **Safe 5.8×**. Same Grazing Plane,
+      *steep* (non-grazing) view → **Standard wins** — the flip is in one scene.
+    - **Where Standard still rightly wins:** smooth, low-grazing metric scenes
+      (Thin Torus all views, Hollow Cube CSG all views, Cube face/grazing, Sphere
+      ortho) — there the adaptive methods are mostly *capped* (can't reach the bar).
+    - **Caveats:** Segment is `cap` everywhere except the grazing plane (broken off
+      that regime — consistent with the faithful-Segment fix); Naive-Relaxed leads
+      many ms rows but is the *naive* over-relaxation (fast-but-can-miss) — its
+      wins need a visual gut-check (perceptual A/B harness) before full trust.
+
+    --- *(original plan, executed as written below)* ---
+
+    Widen from 5 → **13 scenes**
     for real geometric/winner diversity. Only scenes whose **Python SDF ≡ GLSL SDF**
     are admitted — features come from the Python SDF but the grid scores the GLSL
     render, so a mismatch silently invalidates the join (each new scene verified to
@@ -355,3 +386,53 @@ broken off the plane** (Thin-Torus IoU 0.003); eval-count ≠ ms (Enhanced); the
 steps × 100 param combos ≈ 5.6×10⁵ runs ≈ ~31 h — a feasible weekend run on one
 3090. Therefore the engineering effort goes into I/O batching, Pareto-only image
 persistence, and the cheap-vs-scored run split, **not** into shrinking the grid.
+
+---
+
+## Phase 7 — future work / open ideas (post-6.5)
+
+Ordered roughly by value-for-effort. Each is independent.
+
+1. **Visual gut-check of the ms-winners (highest priority).** The §6.5 ms table
+   crowns Naive-Relaxed/Segment on many views, but Naive over-relaxation can
+   *tunnel* thin/sharp features while still scoring IoU ≥ 0.98. Run the perceptual
+   A/B harness (`report.perceptual_review` → `perceptual_review.html`) on the
+   grazing/intricate winners at equal wall-clock and have a human confirm they're
+   actually clean, not just numerically close. This is the credibility gate before
+   publishing any "adaptive beats Standard by N×" claim.
+
+2. **Reconcile the 3 deferred scenes → widen the grid.** Smooth Blend (smooth-min
+   form: Python `h²k/4` vs GLSL `mix`), Bad Lipschitz (Python `×2` overshoot vs
+   GLSL `×0.1` underestimate — a *semantic* choice: pick which failure mode to
+   test), Pillar Forest (radius/height + Python-only floor plane). They already
+   have 6.1 features but no grid rows (see the "no grid rows" note in the discovery
+   reports). Fix Python≡GLSL (verify |SDF| ~1e-7 at surface), add curated
+   viewpoints, re-run §6.5. Bad-Lipschitz especially should stress the methods that
+   assume a true distance.
+
+3. **Bumpy-floor-at-grazing scene (strongest missing certifiable demo).** The
+   cleanest adaptive win so far (Segment on Grazing Plane) is a flat plane. A
+   *bumpy* floor viewed at a grazing angle = grazing + intricate + metric (sound
+   oracle) all at once — should be the most dramatic, *certifiable* adaptive win in
+   the set, and harder to dismiss than the fractal (where oracle trust runs out).
+
+4. **Build the feature→winner predictor.** §3/§4 of discovery show `grazing_frac`
+   + `hardness_cv` separate the winners. Promote that from a correlation table to
+   an actual classifier (even a 2-feature decision boundary) that, given a scene's
+   strategy-independent features, predicts the ms-winner — the real deliverable of
+   the "which algorithm, which scene, why" question. Validate on held-out views.
+
+5. **Investigate Enhanced's per-iteration ms overhead.** Enhanced wins the *evals*
+   axis 14× but rarely *ms* — its extra ALU + warp divergence (FINDINGS §5) eats
+   the eval savings. If that overhead can be cut (simpler step rule / less
+   divergence), Enhanced's broad eval-win could convert to ms-wins. Profile it.
+
+6. **Decide Segment's scope.** It's `cap` everywhere except the grazing plane.
+   Either extend its candidate-segment bracket to handle curvature/thin features
+   (the long-standing bug), or formally scope it as a grazing-plane-only method and
+   stop charging it on scenes it can't do.
+
+7. **Interval (sound) gold oracle for the fractal.** Mandelbulb wins are real but
+   sit at the dense-march oracle's trust limit (~0.98, unsound on L>1). The
+   interval-arithmetic reference (Phase 6.3 work, deferred for Mandelbulb) would
+   let us trust the fractal numbers to the same standard as the metric scenes.
